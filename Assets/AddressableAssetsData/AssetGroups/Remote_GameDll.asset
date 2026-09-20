@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Remote_GameDll
+  m_EditorClassIdentifier: 
+  m_GroupName: Remote_GameDll
+  m_Data:
+    m_SerializedData: []
+  m_GUID: 23377f0eb4cb04147959eac88b4366b0
+  m_SerializeEntries:
+  - m_GUID: 66e80f8497dc04ccdb25e5bba8adb9ac
+    m_Address: Game.dll
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 818d4a897d9db4617ac0dbf9f06490a2, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: f79235334dbbb4637a940174da1d1b19, type: 2}
+    - {fileID: 11400000, guid: 9bbbe5b6d98104aafb12116044650724, type: 2}

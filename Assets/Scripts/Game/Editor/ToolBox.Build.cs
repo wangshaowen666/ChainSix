@@ -31,7 +31,13 @@ public partial class ToolBox
         AddLogInfo("已调用HybridCLR ActiveBuildTarget编译");
         
         CopyDll();
-       
+
+        if (!SyncResGroups())
+        {
+            AddLogInfo("错误：同步资源分组失败，已中止热更构建");
+            return;
+        }
+
         BuildContentUpdate();
         
         ClearInvalidBundle();
@@ -58,7 +64,13 @@ public partial class ToolBox
         AddLogInfo("已调用HybridCLR Generate/All编译");
         
         CopyDll();
-       
+
+        if (!SyncResGroups())
+        {
+            AddLogInfo("错误：同步资源分组失败，已中止新包构建");
+            return;
+        }
+
         BuildNewContent();
         
         ClearInvalidBundle();
@@ -166,6 +178,21 @@ public partial class ToolBox
     {
         EditorApplication.ExecuteMenuItem("微信小游戏/转换小游戏");
     }
+
+    [HorizontalGroup("打包工具/同步布局", width: 100)]
+    [Button("同步资源分组", ButtonSizes.Large)]
+    public void SyncResGroupButton()
+    {
+        SyncResGroups();
+    }
+
+    /// <summary>
+    /// 依据规则表同步 Addressables 分组（建组/入组/地址/Label/校验），失败返回 false
+    /// </summary>
+    private bool SyncResGroups()
+    {
+        return ResGroupSyncer.SyncAndReport(AddLogInfo);
+    }
     
     /// <summary>
     /// 构建新包
@@ -222,7 +249,8 @@ public partial class ToolBox
         var modifiedEntries = ContentUpdateScript.GatherModifiedEntries(settings, stateBinPath);
         if (modifiedEntries != null && modifiedEntries.Count > 0)
         {
-            ContentUpdateScript.CreateContentUpdateGroup(settings, modifiedEntries, "ContentUpdate_Group");
+            // 组名带 Remote_ 前缀：热更 bundle 才能被 ClearInvalidBundle 与客户端缓存清理逻辑识别
+            ContentUpdateScript.CreateContentUpdateGroup(settings, modifiedEntries, "Remote_ContentUpdate");
         }
       
         var result = ContentUpdateScript.BuildContentUpdate(settings, stateBinPath);

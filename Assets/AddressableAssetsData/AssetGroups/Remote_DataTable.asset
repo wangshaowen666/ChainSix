@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Remote_DataTable
+  m_EditorClassIdentifier: 
+  m_GroupName: Remote_DataTable
+  m_Data:
+    m_SerializedData: []
+  m_GUID: aee6748bdaf0f45689b38b17ebd9ef53
+  m_SerializeEntries:
+  - m_GUID: d240543ca36204f6d96e729e81c94e1f
+    m_Address: tbentity
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - datatable
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d651fd45767c54f6c881aae3cdbece5d
+    m_Address: tbuipanel
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - datatable
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 818d4a897d9db4617ac0dbf9f06490a2, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 2df12211109d24572b181249b4224568, type: 2}
+    - {fileID: 11400000, guid: 5f5468dd3dc35433f8d2a18ffdd7056d, type: 2}
