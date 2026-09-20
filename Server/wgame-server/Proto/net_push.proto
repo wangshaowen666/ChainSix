@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+// 服务器推送相关（UDP）
+package NetMsg;
+
+// 邮件推送（服务器 → 客户端）
+message MailPush {
+  int32 mail_id = 1;
+  string title = 2;
+  string content = 3;
+  int32 reward_gold = 4;  // 附件金币奖励
+}
+
+// 活动结算推送（服务器 → 客户端）
+message ActivityRewardPush {
+  int32 activity_id = 1;
+  int32 reward_gold = 2;
+  int32 reward_item_id = 3;
+}

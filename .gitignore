@@ -1,0 +1,65 @@
+# Unity 核心忽略规则
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]nityGenerated/
+[Ss]erverData/
+[Mm]emoryCaptures/
+HybridCLRData/
+Assets/HybridCLRGenerate
+WGame_BurstDebugInformation_DoNotShip/
+
+# 微信转换副产品（data包备份，每次转换自动重新生成）
+TextToolDatas/
+mono_crash.0.0.json
+UserSettings/Layouts/default-2022.dwlt
+
+# Server 编译产物
+Server/**/bin/
+Server/**/obj/
+Server/**/*.db
+
+# 统计导出输出（自动生成，不入库）
+文档/统计输出/
+
+# Unity 项目文件
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.pdb 
+*.opendb
+*.VC.db
+
+# 构建输出
+*.apk
+*.aab
+*.ipa
+*.unitypackage
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 编辑器缓存
+.vs/
+.vscode/
+.idea/
+.codely-cli/
+
+# 用户特定文件
+*.private
+*.private.meta
+
+# Packages 文件夹：只忽略自动生成的内容，保留配置文件
+Packages/nuget-packages/*
+!Packages/nuget-packages/NuGet.config
+!Packages/nuget-packages/package.json
+!Packages/nuget-packages/packages.config

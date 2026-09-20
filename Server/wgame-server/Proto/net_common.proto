@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+// 公共定义：错误码、消息类型、信封
+// 其他 .proto 通过 import "common.proto" 引用
+package NetMsg;
+
+// 错误码（0 = 成功，非 0 = 失败）
+// 约定：所有 Resp 消息的 error_code 固定放在 field 1，业务字段从 field 2 往后排，
+//       这样新增字段直接往下追加，无需改动已有字段号
+enum ErrorCode {
+  ERROR_NONE = 0;              // 成功
+  ERROR_INTERNAL = 1000;       // 服务器内部错误（含响应非 proto 等异常情况）
+  ERROR_USER_EXISTS = 1001;    // 用户名已存在
+  ERROR_WRONG_CREDENTIALS = 1002;  // 用户名或密码错误
+  ERROR_UNAUTHORIZED = 1003;   // 未授权（未带 token 或 token 无效）
+  ERROR_PLAYER_NOT_FOUND = 1004;   // 玩家不存在
+  ERROR_PROFILE_NOT_FOUND = 1005; // 养成数据不存在
+  ERROR_NOT_IN_ROOM = 1006;    // 不在房间内（建房/加入前须先通过 UDP 认证）
+  ERROR_ROOM_NOT_FOUND = 1007; // 加入的房间不存在
+  ERROR_ROOM_FULL = 1008;      // 房间已满
+  ERROR_ALREADY_IN_ROOM = 1009; // 已在房间中（需先退出）
+}
+
+// 全局消息类型（UDP 信封 msg_type 用）
+// 编号全局唯一，由编译器保证不重复；新增消息在此追加枚举值即可
+enum MsgType {
+  MSG_NONE = 0;                    // 占位
+  MSG_PLAYER_INPUT = 1;            // 玩家操作（客户端->服务器）
+  MSG_FRAME_DATA = 2;              // 帧数据（服务器->客户端）
+  MSG_MAIL_PUSH = 3;               // 邮件推送
+  MSG_ACTIVITY_REWARD_PUSH = 4;    // 活动结算推送
+  MSG_UDP_LOGIN_REQ = 5;           // UDP 连接认证请求（客户端->GameServer，带 JWT token）
+  MSG_UDP_LOGIN_RESP = 6;          // UDP 连接认证回复（GameServer->客户端）
+  MSG_ROOM_REQ = 7;                // 房间请求（客户端->服务器：无 room_id=创建，有=加入）
+  MSG_ROOM_RESP = 8;               // 房间请求回复（服务器->客户端）
+  MSG_ROOM_STATE_PUSH = 9;         // 房间状态推送（服务器->房间内所有成员：成员列表变化）
+  MSG_LEAVE_ROOM_REQ = 10;         // 退出房间请求（客户端->服务器）
+  MSG_LEAVE_ROOM_RESP = 11;        // 退出房间回复（服务器->客户端）
+  MSG_MATCH_REQ = 12;              // 匹配请求（客户端->服务器：开始/取消）
+  MSG_MATCH_RESP = 13;             // 匹配回复（服务器->客户端：受理回执/撮合成功）
+  MSG_READY_REQ = 14;              // 就绪请求（客户端->服务器，房间内成员）
+  MSG_READY_RESP = 15;             // 就绪回复（服务器->客户端）
+  MSG_START_GAME_PUSH = 16;        // 开战推送（服务器->房间全员：起始帧+随机种子）
+  MSG_GAME_END_REQ = 17;           // 游戏结束上报（客户端->服务器：本地模拟判定结束后）
+  MSG_GAME_END_RESP = 18;          // 游戏结束回执（服务器->客户端）
+  MSG_GAME_END_PUSH = 19;          // 游戏结束推送（服务器->房间全员：结束帧+结果）
+}
+
+// 消息信封：所有 UDP 消息统一包在这一层，首字段标识消息类型，payload 承载具体消息
+message NetMsgEnvelope {
+  MsgType msg_type = 1;   // 消息类型（见 MsgType 枚举）
+  bytes payload = 2;      // 具体消息的 proto 序列化字节
+}

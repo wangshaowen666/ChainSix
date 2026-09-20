@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+// 帧同步相关：玩家操作/帧数据（UDP）
+package NetMsg;
+
+import "net_common.proto";
+
+// UDP 连接认证请求（客户端连上 GameServer 后发送，token 来自 HTTP 登录）
+message UdpLoginReq {
+  string token = 1;
+}
+
+// UDP 连接认证回复（player_id 为 token 解析出的真实玩家 id，后续帧数据用它标识身份）
+// 命名规范：请求/响应成对 XxxReq/XxxResp（见开发文档阶段 4）
+message UdpLoginResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 认证成功
+  int32 player_id = 2;
+}
+
+// 玩家操作（客户端 -> 服务器，服务器广播时填充 player_id）
+// op_type: 1=放置塔(param1=格子x, param2=格子y) 2=升级塔(同参数，需塔主人) 0=已废弃
+message PlayerInput {
+  int32 op_type = 1;
+  int32 param1 = 2;    // 参数1（如目标位置 x）
+  int32 param2 = 3;    // 参数2（如目标位置 y）
+  int32 player_id = 4; // 操作归属玩家（服务器广播时填 token 解析的 playerId，客户端发送时无需填）
+}
+
+// 帧数据（服务器 → 客户端）：一帧内所有玩家的操作
+message FrameData {
+  int32 frame_id = 1;                    // 帧号
+  repeated PlayerInput inputs = 2;       // 本帧操作列表
+}

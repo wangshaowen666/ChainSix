@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+// 认证相关：注册/登录/玩家信息（HTTP）
+package NetMsg;
+
+import "net_common.proto";
+
+// 注册请求 / 响应
+message RegisterReq {
+  string username = 1;
+  string password = 2;
+}
+message RegisterResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 成功
+}
+
+// 登录请求 / 响应
+message LoginReq {
+  string username = 1;
+  string password = 2;
+}
+message LoginResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 成功
+  string token = 2;
+  int32 player_id = 3;
+  string username = 4;
+}
+
+// 获取玩家信息（验证 token）响应
+message GetMeResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 成功
+  int32 player_id = 2;
+  string username = 3;
+  string created_at = 4;
+}

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+// 养成数据相关：获取玩家养成数据（HTTP）
+// 写入一律由服务器主导（GameServer 结算入账等业务接口），客户端无写权限（防作弊，阶段 7-3 移除 SaveData）
+package NetMsg;
+
+import "net_common.proto";
+
+// 获取养成数据请求 / 响应
+message GetDataReq {
+  int32 player_id = 1;
+}
+message GetDataResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 成功
+  int32 gold = 2;
+  int32 stage_progress = 3;
+  string tower_levels = 4;   // JSON: {"tower_1": 3}
+}

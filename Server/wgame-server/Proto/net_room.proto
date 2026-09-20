@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+// 房间相关（UDP）
+package NetMsg;
+
+import "net_common.proto";
+
+// 房间请求（客户端 -> 服务器）
+// room_id = 0：创建新房间；room_id > 0：加入指定房间
+message RoomReq {
+  int32 room_id = 1;
+}
+
+// 房间请求回复（服务器 -> 客户端）
+message RoomResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 成功
+  int32 room_id = 2;          // 房间号（创建/加入成功时返回）
+}
+
+// 房间状态推送（服务器 -> 房间内所有成员，成员变化时触发）
+message RoomStatePush {
+  int32 room_id = 1;
+  repeated int32 player_ids = 2;  // 当前房间成员列表（playerId 升序，双端一致）
+}
+
+// 退出房间请求（客户端 -> 服务器）
+message LeaveRoomReq {
+}
+
+// 退出房间回复（服务器 -> 客户端）
+message LeaveRoomResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 成功
+}
+
+// 匹配请求（客户端 -> 服务器）
+// cancel = false：开始匹配（进入匹配队列）；cancel = true：取消匹配（出队）
+message MatchReq {
+  bool cancel = 1;
+}
+
+// 匹配状态（服务器 -> 客户端）
+// 0=未匹配(默认) 1=开始匹配受理(已入队) 2=撮合成功(已进房) 3=取消匹配成功
+enum MatchState {
+  MATCH_STATE_NONE = 0;
+  MATCH_STATE_MATCHING = 1;
+  MATCH_STATE_MATCHED = 2;
+  MATCH_STATE_CANCELLED = 3;
+}
+
+// 匹配回复（服务器 -> 客户端）
+// 开始匹配受理时回一次 match_state=MATCHING；
+// 撮合成功时再回一次 match_state=MATCHED（此时已自动进入房间，room_id 为撮合的房间号，成员推送照常跟随）；
+// 取消匹配成功回 match_state=CANCELLED
+message MatchResp {
+  ErrorCode error_code = 1;      // ERROR_NONE = 成功
+  MatchState match_state = 2;    // 见 MatchState 枚举
+  int32 room_id = 3;             // 撮合成功时的房间号
+}
+
+// 就绪请求（客户端 -> 服务器，房间内成员发送）
+message ReadyReq {
+}
+
+// 就绪回复（服务器 -> 客户端，仅回执本人就绪受理）
+message ReadyResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 受理
+}
+
+// 开战推送（服务器 -> 房间内所有成员，全员就绪时触发一次）
+// 客户端以 start_frame 为统一起始帧：服务器广播的帧号达到 start_frame 之前的帧全部丢弃，
+// 从 start_frame 起喂给逻辑层（不再空帧快进，根治后进场漏操作）；seed 为战斗随机种子
+message StartGamePush {
+  int32 start_frame = 1;      // 战斗起始帧号（服务器当前帧 + 缓冲，双端一致）
+  int64 seed = 2;             // 战斗随机种子（双端 BattleLogic 用同一种子）
+  repeated int32 player_ids = 3;  // 参战玩家列表（playerId 升序，双端一致初始化逻辑层）
+}
+
+// 游戏结果
+enum GameResult {
+  GAME_RESULT_NONE = 0;
+  GAME_RESULT_DEFEAT = 1;     // 失败（基地被攻破）
+  GAME_RESULT_VICTORY = 2;    // 胜利（胜利条件实现时启用，当前预留）
+}
+
+// 游戏结束上报（客户端 -> 服务器）
+// 客户端本地逻辑层判定结束后上报（双端同帧判定、都会上报，服务器以第一份为准，其余幂等忽略）
+message GameEndReq {
+  int32 end_frame = 1;        // 结束帧号（本地模拟判定的帧，阶段 7 校验用）
+}
+
+// 游戏结束回执（服务器 -> 客户端，仅回执本人）
+message GameEndResp {
+  ErrorCode error_code = 1;   // ERROR_NONE = 受理
+}
+
+// 游戏结束推送（服务器 -> 房间内所有成员，首个 GameEndReq 触发一次）
+// 客户端收到后结束战斗表现；房间回到等待中，可再次就绪重开
+message GameEndPush {
+  int32 end_frame = 1;        // 结束帧号
+  GameResult result = 2;      // 结果（当前仅失败）
+  int32 gold_reward = 3;      // 奖励金币（服务器按结束帧计算，客户端上报无效力）
+}
