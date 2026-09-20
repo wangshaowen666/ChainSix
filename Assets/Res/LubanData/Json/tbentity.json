@@ -1,0 +1,98 @@
+[
+  {
+    "id": 10000,
+    "name": "PlayerShip"
+  },
+  {
+    "id": 10001,
+    "name": "EnemyShip"
+  },
+  {
+    "id": 50000,
+    "name": "PlayerBolt"
+  },
+  {
+    "id": 50001,
+    "name": "EnemyBolt"
+  },
+  {
+    "id": 60000,
+    "name": "Asteroid01"
+  },
+  {
+    "id": 60001,
+    "name": "Asteroid02"
+  },
+  {
+    "id": 60002,
+    "name": "Asteroid03"
+  },
+  {
+    "id": 70000,
+    "name": "PlayerExplosion"
+  },
+  {
+    "id": 70001,
+    "name": "EnemyExplosion"
+  },
+  {
+    "id": 70002,
+    "name": "AsteroidExplosion"
+  },
+  {
+    "id": 70003,
+    "name": "PlayerEngine"
+  },
+  {
+    "id": 70004,
+    "name": "EnemyEngine"
+  },
+  {
+    "id": 101001,
+    "name": "Hero_101001"
+  },
+  {
+    "id": 201001,
+    "name": "Enemy_201001"
+  },
+  {
+    "id": 500001,
+    "name": "Bolt_500001"
+  },
+  {
+    "id": 500003,
+    "name": "Orbit_500003"
+  },
+  {
+    "id": 701001,
+    "name": "Effect_701001"
+  },
+  {
+    "id": 300001,
+    "name": "Gem_300001"
+  },
+  {
+    "id": 500002,
+    "name": "DamageText_500002"
+  },
+  {
+    "id": 201002,
+    "name": "Enemy_201002"
+  },
+  {
+    "id": 201003,
+    "name": "Enemy_201003"
+  },
+  {
+    "id": 201004,
+    "name": "Enemy_201004"
+  },
+  {
+    "id": 201005,
+    "name": "Enemy_201005"
+  },
+  {
+    "id": 300002,
+    "name": "Chest_300002"
+  }
+]

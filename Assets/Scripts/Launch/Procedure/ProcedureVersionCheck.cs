@@ -23,7 +23,7 @@ public class ProcedureVersionCheck : ProcedureBase
     {
         if (LaunchConfig.SkipVersionCheck)
         {
-            var panel = _fsm.GetData<LoginPanel>(LaunchConfig.LoginPanel);
+            var panel = _fsm.GetData<LaunchPanel>(LaunchConfig.LaunchPanel);
             panel.SetTip("获取服务器信息...", 0.2f);
             
             ChangeTo<ProcedureResCheckAA>();

@@ -8,7 +8,7 @@
 | `DataTables/Datas/__tables__.xlsx` | 表注册（表名 ↔ 数据文件、分组） |
 | `DataTables/Datas/__beans__.xlsx` | 结构体（bean）定义 |
 | `DataTables/Datas/__enums__.xlsx`、`__pnlenums__.xlsx` | 枚举定义 |
-| `DataTables/Defines/builtin.xml` | 内置类型 vector2/3/4 |
+| `DataTables/Defines/` | 自定义类型定义（当前为空） |
 | `DataTables/luban.conf` | Luban 主配置 |
 | `DataTables/gen.sh`、`gen.bat` | 导表脚本 |
 | `Assets/Scripts/Game/DataTable/Gen/` | 自动生成 C#（禁止手改） |

@@ -27,11 +27,11 @@ public static class LaunchConfig
     // ui相机名
     public const string UICamera = "UICamera";
     // 登陆界面路径
-    public const string LoginPath = "LoginPanel/LoginPanel";
+    public const string LaunchPath = "LaunchPanel/LaunchPanel";
     // 启动游戏获取服务器设置网址
     public const string ServerSettingURL = "http://localhost:6666/?CH=Api&Opt=GetServerSetting";
     // 跳过版本检查
     public const bool SkipVersionCheck = true;
     // 流程登陆界面key
-    public const string LoginPanel = "loginPanel";
+    public const string LaunchPanel = "launchPanel";
 }

@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "MainPanel",
+    "group": 2,
+    "allowMult": false,
+    "hideCovered": false
+  },
+  {
+    "id": 2,
+    "name": "BattlePanel",
+    "group": 2,
+    "allowMult": false,
+    "hideCovered": false
+  },
+  {
+    "id": 3,
+    "name": "LoadingPanel",
+    "group": 8,
+    "allowMult": false,
+    "hideCovered": false
+  }
+]

@@ -22,23 +22,23 @@ public class ProcedureLaunch : ProcedureBase
         CreateUICanvas();
         
         var panel = LoadLoginPanel();
-        _fsm.SetData(LaunchConfig.LoginPanel, panel);
+        _fsm.SetData(LaunchConfig.LaunchPanel, panel);
         panel.SetTip("游戏启动中...", 0.1f);
 
         ChangeTo<ProcedureVersionCheck>();
     }
     
-    private LoginPanel LoadLoginPanel()
+    private LaunchPanel LoadLoginPanel()
     {
-        GameObject loginPrefab = Resources.Load<GameObject>(LaunchConfig.LoginPath);
+        GameObject loginPrefab = Resources.Load<GameObject>(LaunchConfig.LaunchPath);
         if (loginPrefab == null)
         {
-            Log.Error("登陆界面路径错误：", LaunchConfig.LoginPath);
+            Log.Error("登陆界面路径错误：", LaunchConfig.LaunchPath);
             return null;
         }
 
         GameObject loginInstance = Object.Instantiate(loginPrefab, _uiRoot);
-        return loginInstance.GetComponent<LoginPanel>();
+        return loginInstance.GetComponent<LaunchPanel>();
     }
     
     private void CreateUICanvas()

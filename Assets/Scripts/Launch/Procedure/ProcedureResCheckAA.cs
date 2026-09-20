@@ -13,7 +13,7 @@ public class ProcedureResCheckAA : ProcedureBase
     private const int Mb = 1024 * 1024;
     
     private AddressableHelper _helper;
-    private LoginPanel _loginPanel;
+    private LaunchPanel _loginPanel;
 
     public override void OnInit(Fsm fsm)
     {
@@ -26,7 +26,7 @@ public class ProcedureResCheckAA : ProcedureBase
     {
         base.OnEnter();
         
-        _loginPanel = _fsm.GetData<LoginPanel>(LaunchConfig.LoginPanel);
+        _loginPanel = _fsm.GetData<LaunchPanel>(LaunchConfig.LaunchPanel);
         AsyncRun().Forget();
     }
 
