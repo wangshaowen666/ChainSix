@@ -139,7 +139,8 @@ public static class ResGroupSyncer
         }
 
         // 5. 清死条目、多余条目检查
-        var emptyContentUpdateGroups = new List<AddressableAssetGroup>();
+        var emptyGroups = new List<AddressableAssetGroup>();
+        string defaultGroupName = settings.DefaultGroup != null ? settings.DefaultGroup.Name : null;
         foreach (AddressableAssetGroup group in settings.groups.ToList())
         {
             if (group == null || group.Name == BuiltInGroupName)
@@ -166,12 +167,13 @@ public static class ResGroupSyncer
                 }
             }
 
-            // 清空的热更临时组直接删掉，避免 FindUniqueGroupName 产生 (1)(2) 副本
-            if (isContentUpdateGroup && group.entries.Count == 0)
-                emptyContentUpdateGroups.Add(group);
+            // 空组直接删除（内置组、默认组除外）：规则调整后残留的旧组不污染分组列表
+            if (group.entries.Count == 0 && group.Name != defaultGroupName)
+                emptyGroups.Add(group);
         }
-        foreach (AddressableAssetGroup group in emptyContentUpdateGroups)
+        foreach (AddressableAssetGroup group in emptyGroups)
         {
+            report.infos.Add($"删除空组: {group.Name}");
             settings.RemoveGroup(group);
             groupRemoved++;
         }

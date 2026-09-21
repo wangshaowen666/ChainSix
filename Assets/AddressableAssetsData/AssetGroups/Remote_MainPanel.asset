@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Remote_MainPanel
+  m_EditorClassIdentifier: 
+  m_GroupName: Remote_MainPanel
+  m_Data:
+    m_SerializedData: []
+  m_GUID: 2be6bedc414c6490791809ef74a52c03
+  m_SerializeEntries:
+  - m_GUID: f2a6c8e4b9d3417a5c8e2f6b9a4d3c85
+    m_Address: MainPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 818d4a897d9db4617ac0dbf9f06490a2, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: fe9d070b01cca47a2a28e455c458c48b, type: 2}
+    - {fileID: 11400000, guid: bd160a31c7bb14dbfa9438d27d99c840, type: 2}

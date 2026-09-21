@@ -32,9 +32,6 @@ public class ProcedurePreload : ProcedureBase
         // 加载配置表（表bytes必须先异步预载，WebGL/小游戏无同步加载能力）
         await GameMgr.DataTable.PreloadTableBytesAsync();
         GameMgr.DataTable.LoadTable();
-
-        // 预载 GPU 动画 shader（真机显式加载后 Shader.Find 才能命中，加载后常驻）
-        await FrameAnimGpuUtil.PreloadShadersAsync();
         
         await UniTask.Yield();
         

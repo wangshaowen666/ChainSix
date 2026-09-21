@@ -14,18 +14,34 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   dirRules:
   - dir: Assets/Res/Dll
+    subfolderAsGroup: 0
     group: Remote_GameDll
+    groupNamePrefix: 
     extensions: 
     labels: 
   - dir: Assets/Res/LubanData/Bin
+    subfolderAsGroup: 0
     group: Remote_DataTable
+    groupNamePrefix: 
     extensions: 
     labels: datatable
+  - dir: Assets/Res/Scenes
+    subfolderAsGroup: 0
+    group: Remote_Scene
+    groupNamePrefix: 
+    extensions: 
+    labels: 
+  - dir: Assets/Res/UI
+    subfolderAsGroup: 1
+    group: 
+    groupNamePrefix: Remote_
+    extensions: 
+    labels: 
   exceptions: []
   ignorePaths:
   - Assets/Res/LubanData/Json
-  - Assets/Res/Config/EditorPathConfig.asset
-  - Assets/Res/Config/ResGroupRuleConfig.asset
+  - Assets/Res/Config
+  - Assets/Res/Scenes/Launch.scene
   unmanagedGroups:
   - Built In Data
   - Remote_ContentUpdate

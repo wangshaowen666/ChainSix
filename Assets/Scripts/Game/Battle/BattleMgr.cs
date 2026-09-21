@@ -43,6 +43,10 @@ public class BattleMgr : ManagerBase
                 // 单机玩法：无房间/联机依赖，直接进入（LocalDriver 本地固定步长驱动，阶段 1-3）
                 break;
 
+            case BattleMode.SixLine:
+                // 六连珠阶段 1 本地灰盒：无房间/联机依赖直接进入（LocalDriver 驱动，1-7 接入）；阶段 3 好友对战改 FrameSyncMgr 驱动
+                break;
+
             default:
                 Log.Error("未知战斗模式:", mode);
                 return;
@@ -57,6 +61,9 @@ public class BattleMgr : ManagerBase
             // case BattleMode.VampireSurvivor:
             //     _battleView = new VampireView();
             //     break;
+            case BattleMode.SixLine:
+                _battleView = new SixLineView();
+                break;
         }
         _battleView?.Init();
     }

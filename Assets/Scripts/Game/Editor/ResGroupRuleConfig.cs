@@ -101,6 +101,23 @@ public class ResGroupRuleConfig : ScriptableObject
             labels = "datatable",   // 预载：DataTableMgr.PreloadTableBytesAsync 按 label 加载
         });
 
+        // UI 面板：Assets/Res/UI/<面板名>/ 子文件夹即组（组名 = Remote_ + 面板名），prefab 地址 = 文件名
+        dirRules.Add(new DirRule
+        {
+            dir = "Assets/Res/UI",
+            subfolderAsGroup = true,
+            groupNamePrefix = "Remote_",
+            extensions = ".prefab",
+        });
+
+        // 场景：Main/Battle 按名加载（地址 = 文件名去扩展名），远程组随包下发
+        dirRules.Add(new DirRule
+        {
+            dir = "Assets/Res/Scenes",
+            group = "Remote_Scene",
+            extensions = ".scene",
+        });
+
         // 开发用 JSON 不进 bundle
         ignorePaths.Add("Assets/Res/LubanData/Json");
         // 纯编辑器配置

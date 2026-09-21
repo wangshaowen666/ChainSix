@@ -13,6 +13,7 @@ public enum BattleMode : byte
 {
     TowerDefense,     // 帧同步塔防
     VampireSurvivor,  // 吸血鬼幸存者
+    SixLine,          // 六连珠（Puyo 式双棋盘垃圾子对战）
 }
 
 public abstract class BattleView 
