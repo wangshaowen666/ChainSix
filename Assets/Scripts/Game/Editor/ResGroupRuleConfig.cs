@@ -61,7 +61,7 @@ public class ResGroupRuleConfig : ScriptableObject
     [LabelText("忽略路径前缀(不参与同步与覆盖检查)")]
     public List<string> ignorePaths = new List<string>();
 
-    [LabelText("不警告孤儿的组(其中的条目仍会被同步归位)")]
+    [LabelText("不警告多余条目的组(其中的条目仍会被同步归位)")]
     public List<string> unmanagedGroups = new List<string> { BuiltInGroupName, ContentUpdateGroupPrefix };
 
     public const string AssetPath = "Assets/Scripts/Game/Editor/ResGroupRuleConfig.asset";
@@ -69,14 +69,14 @@ public class ResGroupRuleConfig : ScriptableObject
     /// <summary>热更构建自动生成的临时组名前缀，须与 ToolBox.BuildContentUpdate 保持一致</summary>
     public const string ContentUpdateGroupPrefix = "Remote_ContentUpdate";
 
-    /// <summary>加载规则表，不存在时创建并写入初始规则</summary>
+    /// <summary>加载规则表：优先按类型查找（资产位置可移动），不存在时在默认路径创建并写入初始规则</summary>
     public static ResGroupRuleConfig LoadOrCreate()
     {
-        var config = AssetDatabase.LoadAssetAtPath<ResGroupRuleConfig>(AssetPath);
-        if (config != null)
-            return config;
+        string[] guids = AssetDatabase.FindAssets("t:ResGroupRuleConfig");
+        if (guids.Length > 0)
+            return AssetDatabase.LoadAssetAtPath<ResGroupRuleConfig>(AssetDatabase.GUIDToAssetPath(guids[0]));
 
-        config = CreateInstance<ResGroupRuleConfig>();
+        var config = CreateInstance<ResGroupRuleConfig>();
         config.InitDefaultRules();
         AssetDatabase.CreateAsset(config, AssetPath);
         AssetDatabase.SaveAssets();

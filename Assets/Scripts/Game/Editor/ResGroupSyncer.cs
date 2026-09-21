@@ -15,15 +15,16 @@ using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using UnityEngine;
+using UnityEngine.ResourceManagement.ResourceProviders;
 
 /// <summary>
 /// 资源分组同步器：依据 ResGroupRuleConfig 把 Addressables 配置对齐到规则表（幂等，重复执行无副作用）。
 /// 职责：
 /// - 一次性初始化 Addressables 全局设置（远程 Catalog 等）
-/// - 建组 / 入组 / 改地址 / 改 Label / 清死条目
-/// - 归位热更构建遗留在 Remote_ContentUpdate 组中的条目。该组 StaticContent=false，
-///   条目若留在里面，GatherModifiedEntries 永远收集不到它，后续热更会静默失效
-/// - 校验：地址重名（阻断）、Res 下未被规则覆盖的资源（警告）、孤儿条目（警告）
+/// - 建组 / 入组 / 改地址 / 改 Label / 清死条目 / 组 schema 对齐统一模板
+/// - 归位热更构建遗留在 Remote_ContentUpdate 组中的条目（兼容保留：仅在组开启 Prevent Updates 时
+///   热更流程才会把变更条目移入该组；不归位会导致这些条目永远无法热更）
+/// - 校验：地址重名（阻断）、Res 下未被规则覆盖的资源（警告）、组内多余条目（警告）
 /// </summary>
 public static class ResGroupSyncer
 {
@@ -137,7 +138,7 @@ public static class ResGroupSyncer
                 labelChanged++;
         }
 
-        // 5. 清死条目、孤儿检查
+        // 5. 清死条目、多余条目检查
         var emptyContentUpdateGroups = new List<AddressableAssetGroup>();
         foreach (AddressableAssetGroup group in settings.groups.ToList())
         {
@@ -161,7 +162,7 @@ public static class ResGroupSyncer
                 if (!desiredByGuid.ContainsKey(entry.guid) && !isContentUpdateGroup
                     && !config.unmanagedGroups.Contains(group.Name))
                 {
-                    report.warnings.Add($"孤儿条目(未命中规则，可登记例外表): {entry.address} -> {assetPath} ({group.Name})");
+                    report.warnings.Add($"组内多余条目(未命中规则，可登记例外表): {entry.address} -> {assetPath} ({group.Name})");
                 }
             }
 
@@ -374,8 +375,8 @@ public static class ResGroupSyncer
     }
 
     /// <summary>
-    /// 确保组存在且 schema 配置正确。新组：Remote_ 前缀 -> 远程路径，否则本地路径。
-    /// 返回是否有实际变更（建组或修正 schema）
+    /// 确保组存在且 schema 对齐统一模板（幂等）。新组：Remote_ 前缀 -> 远程路径，否则本地路径。
+    /// 返回是否有实际变更（建组或 schema 标准化）
     /// </summary>
     private static bool EnsureGroup(AddressableAssetSettings settings, string groupName, SyncReport report,
         Dictionary<string, AddressableAssetGroup> groupCache)
@@ -394,9 +395,6 @@ public static class ResGroupSyncer
             bool isRemote = groupName.StartsWith("Remote", StringComparison.OrdinalIgnoreCase);
             bool okBuild = bundleSchema.BuildPath.SetVariableByName(settings, isRemote ? "Remote.BuildPath" : "Local.BuildPath");
             bool okLoad = bundleSchema.LoadPath.SetVariableByName(settings, isRemote ? "Remote.LoadPath" : "Local.LoadPath");
-            bundleSchema.BundleMode = BundledAssetGroupSchema.BundlePackingMode.PackTogether;
-            // 组名_hash.bundle 命名，与运行时 remote_ 前缀的 bundle 识别逻辑(AddressableHelper/ToolBox)一致
-            bundleSchema.BundleNaming = BundledAssetGroupSchema.BundleNamingStyle.AppendHash;
 
             if (!okBuild || !okLoad)
                 report.errors.Add($"创建组 {groupName} 时 Profile 路径变量设置失败（检查 Profile 是否存在 Local/Remote 的 BuildPath/LoadPath）");
@@ -407,17 +405,82 @@ public static class ResGroupSyncer
             changed = true;
         }
 
-        // StaticContent 默认为 false，会导致热更构建收集不到该组资源，必须为 true
+        if (NormalizeGroupSchema(group, report))
+            changed = true;
+
+        groupCache[groupName] = group;
+        return changed;
+    }
+
+    /// <summary>
+    /// 把组 schema 对齐到统一模板（与 wgame 远程组配置一致），值相同则无操作。
+    /// 热更策略为整包级：Prevent Updates(StaticContent) 关闭，组内任一资源变更时整包重新下发。
+    /// BundleNaming 必须为 AppendHash：bundle 文件名 = 组名_hash.bundle，运行时依赖 remote_ 前缀识别
+    /// </summary>
+    private static bool NormalizeGroupSchema(AddressableAssetGroup group, SyncReport report)
+    {
+        BundledAssetGroupSchema s = group.GetSchema<BundledAssetGroupSchema>();
+        if (s == null)
+            return false;
+
+        bool changed = s.Compression != BundledAssetGroupSchema.BundleCompressionMode.LZ4
+            || !s.IncludeInBuild
+            || s.ForceUniqueProvider
+            || !s.UseAssetBundleCache
+            || !s.UseAssetBundleCrc
+            || !s.UseAssetBundleCrcForCachedBundles
+            || s.UseUnityWebRequestForLocalBundles
+            || s.Timeout != 10
+            || s.ChunkedTransfer
+            || s.RedirectLimit != -1
+            || s.RetryCount != 0
+            || !s.IncludeAddressInCatalog
+            || s.IncludeGUIDInCatalog
+            || !s.IncludeLabelsInCatalog
+            || s.InternalIdNamingMode != BundledAssetGroupSchema.AssetNamingMode.Filename
+            || s.InternalBundleIdMode != BundledAssetGroupSchema.BundleInternalIdMode.GroupGuidProjectIdHash
+            || s.AssetBundledCacheClearBehavior != BundledAssetGroupSchema.CacheClearBehavior.ClearWhenSpaceIsNeededInCache
+            || s.BundleMode != BundledAssetGroupSchema.BundlePackingMode.PackTogetherByLabel
+            || s.BundleNaming != BundledAssetGroupSchema.BundleNamingStyle.AppendHash
+            || s.AssetLoadMode != AssetLoadMode.RequestedAssetAndDependencies;
+
+        s.Compression = BundledAssetGroupSchema.BundleCompressionMode.LZ4;
+        s.IncludeInBuild = true;
+        s.ForceUniqueProvider = false;
+        s.UseAssetBundleCache = true;
+        s.UseAssetBundleCrc = true;
+        s.UseAssetBundleCrcForCachedBundles = true;
+        s.UseUnityWebRequestForLocalBundles = false;
+        s.Timeout = 10;
+        s.ChunkedTransfer = false;
+        s.RedirectLimit = -1;
+        s.RetryCount = 0;
+        s.IncludeAddressInCatalog = true;
+        s.IncludeGUIDInCatalog = false;
+        s.IncludeLabelsInCatalog = true;
+        // 该属性 setter 无判重，手动守卫避免每次同步都误标脏
+        if (s.InternalIdNamingMode != BundledAssetGroupSchema.AssetNamingMode.Filename)
+            s.InternalIdNamingMode = BundledAssetGroupSchema.AssetNamingMode.Filename;
+        s.InternalBundleIdMode = BundledAssetGroupSchema.BundleInternalIdMode.GroupGuidProjectIdHash;
+        s.AssetBundledCacheClearBehavior = BundledAssetGroupSchema.CacheClearBehavior.ClearWhenSpaceIsNeededInCache;
+        s.BundleMode = BundledAssetGroupSchema.BundlePackingMode.PackTogetherByLabel;
+        // 组名_hash.bundle 命名，与运行时 remote_ 前缀的 bundle 识别逻辑(AddressableHelper/ToolBox)一致
+        s.BundleNaming = BundledAssetGroupSchema.BundleNamingStyle.AppendHash;
+        s.AssetLoadMode = AssetLoadMode.RequestedAssetAndDependencies;
+
         ContentUpdateGroupSchema updateSchema = group.GetSchema<ContentUpdateGroupSchema>();
-        if (updateSchema != null && !updateSchema.StaticContent && !IsContentUpdateGroup(group.Name))
+        if (updateSchema != null && updateSchema.StaticContent)
         {
-            updateSchema.StaticContent = true;
-            EditorUtility.SetDirty(updateSchema);
-            report.infos.Add($"组修正: {group.Name} 开启 ContentUpdate(StaticContent)");
+            updateSchema.StaticContent = false;
             changed = true;
         }
 
-        groupCache[groupName] = group;
+        if (changed)
+        {
+            EditorUtility.SetDirty(s);
+            report.infos.Add($"组标准化: {group.Name} schema 对齐模板");
+        }
+
         return changed;
     }
 

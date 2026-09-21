@@ -13,4 +13,4 @@ MonoBehaviour:
   m_Name: Remote_DataTable_ContentUpdateGroupSchema
   m_EditorClassIdentifier: 
   m_Group: {fileID: 11400000, guid: 5349c8b1ad4a1431fa3a89fbd30cea3b, type: 2}
-  m_StaticContent: 1
+  m_StaticContent: 0

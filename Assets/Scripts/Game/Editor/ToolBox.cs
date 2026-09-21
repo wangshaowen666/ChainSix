@@ -53,6 +53,11 @@ public partial class ToolBox : OdinEditorWindow
     [Title("路径配置")]
     [HideLabel]
     public EditorPathConfig editorPathConfig;
+
+    [InlineEditor]
+    [Title("热更分组配置")]
+    [HideLabel]
+    public ResGroupRuleConfig resGroupRuleConfig;
     
     [MenuItem("Tools/Game/工具箱", false, 10)]
     private static void OpenWindow()
@@ -76,6 +81,21 @@ public partial class ToolBox : OdinEditorWindow
                 editorPathConfig = CreateInstance<EditorPathConfig>();
                 AssetDatabase.CreateAsset(editorPathConfig, "Assets/Res/Config/EditorPathConfig.asset");
                 AssetDatabase.SaveAssets();
+            }
+        }
+
+        if (resGroupRuleConfig == null)
+        {
+            string[] guids = AssetDatabase.FindAssets("t:ResGroupRuleConfig");
+            if (guids.Length > 0)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+                resGroupRuleConfig = AssetDatabase.LoadAssetAtPath<ResGroupRuleConfig>(path);
+            }
+            else
+            {
+                // 不存在时按默认规则创建
+                resGroupRuleConfig = ResGroupRuleConfig.LoadOrCreate();
             }
         }
     }

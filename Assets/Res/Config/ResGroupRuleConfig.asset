@@ -25,6 +25,7 @@ MonoBehaviour:
   ignorePaths:
   - Assets/Res/LubanData/Json
   - Assets/Res/Config/EditorPathConfig.asset
+  - Assets/Res/Config/ResGroupRuleConfig.asset
   unmanagedGroups:
   - Built In Data
   - Remote_ContentUpdate

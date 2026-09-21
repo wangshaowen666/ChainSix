@@ -13,4 +13,4 @@ MonoBehaviour:
   m_Name: Remote_GameDll_ContentUpdateGroupSchema
   m_EditorClassIdentifier: 
   m_Group: {fileID: 11400000, guid: 0be944b9221c24bd2b14f1b72958bbb5, type: 2}
-  m_StaticContent: 1
+  m_StaticContent: 0
