@@ -13,8 +13,7 @@
 
 /// <summary>
 /// 玩家操作（形状对齐 NetMsg.PlayerInput，阶段 3 联机由 FrameData.Inputs 直接转换，Logic 零改动）：
-/// - 选列落子（Param1=列号）
-/// - 加速下落（"独立 op vs 落子附带标志"的协议形状在阶段 1 调参期拍板，见任务清单待定决策）
+/// 长按类（按住期间输入源每帧发送）：左移/右移/加速下落；点按类（按下边缘一次）：顺/逆时针旋转
 /// </summary>
 public struct SlInput
 {
@@ -27,6 +26,9 @@ public struct SlInput
 /// <summary>操作类型常量（阶段 3 定稿 proto 后与 NetMsg.PlayerInput.OpType 对齐）</summary>
 public static class SlOp
 {
-    public const int SelectColumn = 1; // 选列落子（Param1=列号）
-    public const int FastDrop = 2;     // 加速下落（协议形状待拍板）
+    public const int MoveLeft = 1;   // 长按：左移一格（按 MoveIntervalFrames 间隔步进）
+    public const int MoveRight = 2;  // 长按：右移一格
+    public const int RotateCW = 3;   // 点按：顺时针转 60°（▲/▽ 互转 + 颜色轮换）
+    public const int RotateCCW = 4;  // 点按：逆时针转 60°
+    public const int FastDrop = 5;   // 长按：加速下落
 }

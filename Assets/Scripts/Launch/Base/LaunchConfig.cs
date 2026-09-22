@@ -21,7 +21,7 @@ public static class LaunchConfig
     public const string HotEntryMethod = "StartGame";
     
     // 屏幕标准尺寸
-    public static Vector2Int ScreenSize = new Vector2Int(1080, 1920);
+    public static Vector2Int ScreenSize = new Vector2Int(1920, 1080);
     // 游戏ui根节点名
     public const string UIRoot = "UIRoot";
     // ui相机名

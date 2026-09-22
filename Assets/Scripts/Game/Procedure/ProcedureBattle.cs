@@ -22,8 +22,8 @@ public class ProcedureBattle : ProcedureBase
         // 战斗内退战斗回主界面（2-11 死亡结算按钮，事件解耦对齐 ProcedureMain.ProcedureExitMain 模式）
         GameMgr.Event.Register(GameEvent.ProcedureExitBattle, RunProcedure);
 
-        // 进入指定玩法战斗
-        GameMgr.Battle.EnterBattle(BattleMode.VampireSurvivor);
+        // 进入指定玩法战斗（VS 已随迁移删除，六连珠阶段 1 起入口固定为 SixLine）
+        GameMgr.Battle.EnterBattle(BattleMode.SixLine);
     }
 
     public override void OnExit()
