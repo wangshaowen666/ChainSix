@@ -12,6 +12,7 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
+using UnityEditor.AddressableAssets.Build.AnalyzeRules;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using UnityEngine;
@@ -25,6 +26,7 @@ using UnityEngine.ResourceManagement.ResourceProviders;
 /// - 归位热更构建遗留在 Remote_ContentUpdate 组中的条目（兼容保留：仅在组开启 Prevent Updates 时
 ///   热更流程才会把变更条目移入该组；不归位会导致这些条目永远无法热更）
 /// - 校验：地址重名（阻断）、Res 下未被规则覆盖的资源（警告）、组内多余条目（警告）
+/// - 重复打包依赖检查（Analyze 规则）：同一非条目资源被重复打进多个 bundle 时列出清单（警告）
 /// </summary>
 public static class ResGroupSyncer
 {
@@ -187,6 +189,10 @@ public static class ResGroupSyncer
             if (!desiredByGuid.ContainsKey(guid))
                 report.warnings.Add($"资源未被规则覆盖: {path}");
         }
+
+        // 7. 重复打包依赖检查（Analyze 规则，内部跑一次只计算不落盘的构建Pass，大工程耗时明显）
+        if (config.checkDuplicateDeps && desiredByGuid.Count > 0)
+            CheckDuplicateBundleDependencies(settings, report);
 
         bool changed = added + moved + addressChanged + labelChanged + deadRemoved + groupRemoved + groupsTouched > 0
             || settingsInitialized;
@@ -484,6 +490,43 @@ public static class ResGroupSyncer
         }
 
         return changed;
+    }
+
+    /// <summary>
+    /// 运行 Addressables 自带的「Check Duplicate Bundle Dependencies」分析：
+    /// 检测同一份非条目资源被重复打进多个 bundle 的情况。
+    /// 治理方式：将共享资源显式设为可寻址并入公共组（打包一次，其余组以依赖引用）
+    /// </summary>
+    private static void CheckDuplicateBundleDependencies(AddressableAssetSettings settings, SyncReport report)
+    {
+        var rule = new CheckBundleDupeDependencies();
+        List<AnalyzeRule.AnalyzeResult> results = rule.RefreshAnalysis(settings);
+        if (results == null || results.Count == 0)
+            return;
+
+        var issues = new List<string>();
+        foreach (AnalyzeRule.AnalyzeResult result in results)
+        {
+            if (result.resultName.Contains("No issues found"))
+                continue;
+            // 失败类信息（如存在未保存场景）带规则名前缀；资源类条目格式为 "组名:bundle名:资源路径"
+            issues.Add(result.resultName.StartsWith(rule.ruleName)
+                ? result.resultName.Substring(rule.ruleName.Length)
+                : result.resultName);
+        }
+
+        if (issues.Count == 0)
+        {
+            report.infos.Add("重复依赖检查: 无重复打包");
+            return;
+        }
+
+        const int maxLines = 30;
+        report.warnings.Add($"发现重复打包的共享依赖 {issues.Count} 项（建议将共享资源设为可寻址并入公共组）:");
+        foreach (string line in issues.Take(maxLines))
+            report.warnings.Add("    " + line.TrimStart());
+        if (issues.Count > maxLines)
+            report.warnings.Add($"    ...其余 {issues.Count - maxLines} 项请在 Addressables 窗口 Tools > Analyze 查看");
     }
 
     /// <summary>
