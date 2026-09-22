@@ -64,6 +64,9 @@ public class ResGroupRuleConfig : ScriptableObject
     [LabelText("不警告多余条目的组(其中的条目仍会被同步归位)")]
     public List<string> unmanagedGroups = new List<string> { BuiltInGroupName, ContentUpdateGroupPrefix };
 
+    [LabelText("同步后检查重复打包依赖")]
+    public bool checkDuplicateDeps = true;
+
     public const string AssetPath = "Assets/Scripts/Game/Editor/ResGroupRuleConfig.asset";
     public const string BuiltInGroupName = "Built In Data";
     /// <summary>热更构建自动生成的临时组名前缀，须与 ToolBox.BuildContentUpdate 保持一致</summary>
