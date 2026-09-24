@@ -28,7 +28,7 @@ public static class SlOp
 {
     public const int MoveLeft = 1;   // 长按：左移一格（按 MoveIntervalFrames 间隔步进）
     public const int MoveRight = 2;  // 长按：右移一格
-    public const int RotateCW = 3;   // 点按：顺时针转 60°（▲/▽ 互转 + 颜色轮换）
-    public const int RotateCCW = 4;  // 点按：逆时针转 60°
+    public const int RotateCW = 3;   // 点按：60° 顺时针（▲/▽ 互转 + 颜色轮换）
+    public const int RotateCCW = 4;  // 点按：60° 逆时针
     public const int FastDrop = 5;   // 长按：加速下落
 }
