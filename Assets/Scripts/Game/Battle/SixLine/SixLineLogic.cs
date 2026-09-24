@@ -16,6 +16,9 @@ using System.Collections.Generic;
 ///   同色连通块 ≥6（六邻接相连，任意形状）消除；6 种特殊图形（横/右斜/左斜直线 6 连、
 ///   上1中2下3、上3中2下1 金字塔、上2/下2/中左/中右 同色六球环）触发该色全消 + 向对方投垃圾子（1-4），
 ///   堆过高度线即负
+/// - 组状态机：Falling 刚性下落 -> 真实接触（整组到达最深合法量化位，必有球贴住地板/山谷）->
+///   Resting 可沉降（GraceFrames 容错内可继续旋转/移动，脱离接触即回 Falling；计时到/按住加速 ->
+///   一次性结算：入板 + 同帧完整沉降（坠落嵌V滚落一遍到底）+ 消除连锁，无二段式沉降）
 /// - Tick(absFrame, inputs) 以绝对帧号锚定：同帧号 + 同操作序列 => 任意端状态完全一致
 /// - 构造传入对局种子（阶段 1 本地生成；阶段 3 联机由 StartGamePush 下发，双端一致）
 /// - 双驱动零改动：人机/本地双人 = SlLocalDriver（已接入），好友对战 = FrameSyncMgr（阶段 3）
@@ -36,10 +39,13 @@ public class SixLineLogic
     public const int ColorMin = 1;      // 最小颜色 id
     public const int ColorMax = 5;      // 最大颜色 id（含），共 5 色（颜色数是难度总开关）
     public const int SlotCount = 9;     // 横向相位数（奇行锚点列 0..8）
-    public const int MoveIntervalFrames = 4; // 长按左右移动的步进间隔（帧）
     public const int ClearCount = 6;         // 消除所需同色连线数（横/右斜/左斜三轴，≥ClearCount 即消）
     public const int MaxSettleRounds = 20;   // 单次结算轮数上限（每轮至少消 6 格，114 格板不可能触顶，防御用）
-    public const int SettleDelayFrames = 40; // 落定后滚落缓冲（帧）：2s @ 50ms（慢放观察用，1-8 迁表恢复 0.5s）
+    public const int GraceFrames = 40;       // 可沉降容错窗口（帧）：真实接触后可继续旋转/移动，2s @ 50ms 慢放（1-8 迁表，正式 0.5s = 10）
+
+    /// <summary>左右平移速度（列/逻辑帧）：按住期间连续 Fix 积分（0.25 列/帧 = 5 列/秒，1-8 迁表调参）</summary>
+    public static readonly Fix MoveSpeed = Fix.FromDouble(0.25);
+    private static readonly Fix Half = Fix.FromDouble(0.5);
 
     /// <summary>常速下落（格/帧）：0.08 格/帧 = 1.6 格/秒</summary>
     public static readonly Fix SlowFallSpeed = Fix.FromDouble(0.08);
@@ -86,8 +92,9 @@ public class SixLineLogic
     /// <summary>当前子状态</summary>
     public enum PieceState : byte
     {
-        None,    // 无组（入格后的瞬时态）
+        None,    // 无组（结算完成到下一组出生的瞬时态）
         Falling, // 下落中（出生即下落，玩家移动/旋转/加速干预）
+        Resting, // 可沉降（已真实接触：容错期内可旋转/移动，脱离接触回 Falling，计时到一次性结算）
     }
 
     /// <summary>操作被拒原因（枚举替代字符串保证 Tick 零 GC；文案由表现层组装）</summary>
@@ -95,33 +102,48 @@ public class SixLineLogic
     {
         None = 0,
         BadPlayerIndex,  // 玩家下标非法
-        RotationBlocked, // 旋转目标格被占（灰盒不做踢墙）
+        RotationBlocked, // 旋转目标格被占
+        MoveBlocked,     // 移动目标量化位与棋子重叠
     }
 
     /// <summary>
     /// 下落三角组：Colors = 原始 ▲ 槽位色 [A=顶, B=左下, C=右下]；Rotation 0..5（偶=▲，奇=▽），
     /// 旋转 = 绕三球中心 60° 刚体旋转的格点量化（形状 ▲↔▽ 互转，颜色随旋转轮换），
     /// 颜色到足迹格的映射见 OddLeftColor/OddRightColor/EvenLeftColor/EvenRightColor。
-    /// Slot = 奇行锚点列；Y = 下排（偶行）所在行坐标（连续）
+    /// X = 连续列位锚点（量化槽位 Slot 派生）；Y = 下排（偶行）所在行坐标（连续）
     /// </summary>
     public class Triomino
     {
         public readonly int[] Colors = new int[3];
         public int Rotation;
-        public int Slot;
+
+        /// <summary>连续列位（按住左右平移时 Fix 积分）；量化槽位 = Slot 派生属性</summary>
+        public Fix X;
         public Fix Y;
         public PieceState State;
+
+        /// <summary>量化槽位（碰撞/落点/结算按列，half-up 取整）</summary>
+        public int Slot => RoundSlot(X);
     }
 
     /// <summary>
     /// 旋转状态 -> 颜色槽映射（元素 = Colors 下标 0/1/2 = A/B/C，-1 = 该姿态不占用此格）。
     /// 足迹：▲（偶行对 @EvenLeft/EvenRight + 上方奇行单 @OddLeft）；▽（上方奇行对 @OddLeft/OddRight + 下方偶行单 @EvenRight）。
-    /// 顺时针一次：▲(A顶/B左下/C右下) → ▽(上B/A，下C)，与需求一致；6 次回环
+    /// 单球（顶点）列随所在行奇偶取 s/s+1（见 SingleCol），渲染恒居中于其配对之下
     /// </summary>
     public static readonly int[] OddLeftColor = { 0, 1, 1, 2, 2, 0 };
     public static readonly int[] OddRightColor = { -1, 0, -1, 1, -1, 2 };
     public static readonly int[] EvenLeftColor = { 1, -1, 2, -1, 0, -1 };
     public static readonly int[] EvenRightColor = { 2, 2, 0, 0, 1, 1 };
+
+    /// <summary>
+    /// 单球（顶点）列：随所在行奇偶取 slot（奇行=山谷位）或 slot+1（偶行=头顶位）。
+    /// 蜂窝错行渲染下两种行奇偶的顶点都居中于其配对之下（真蜂窝竖直下落的锯齿列）
+    /// </summary>
+    public static int SingleCol(int row, int slot) => (row & 1) == 1 ? slot : slot + 1;
+
+    /// <summary>连续列位 -> 量化槽位（half-up：x+0.5 取整；X 恒 &gt;= 0，截断即 floor）</summary>
+    private static int RoundSlot(Fix x) => (x + Half).Int;
 
     /// <summary>棋盘：蜂窝错行扁平格子（行优先，下标经 RowStart/RowCells 换算）</summary>
     public class Board
@@ -150,7 +172,7 @@ public class SixLineLogic
         public readonly int[] RoundSpecial = new int[MaxSettleRounds];  // 每轮特殊消除颜色 bitmask（bit = 颜色 id-1；1-4 消费）
         public int RoundCount;
 
-        public int RollAtFrame; // 滚落允许帧：落定（完全落到支撑上）后等 SettleDelayFrames 再滚落
+        public int RestEndFrame; // 可沉降容错截止帧（真实接触帧 + GraceFrames；按住加速可提前结算）
     }
 
     public readonly List<Player> Players = new List<Player>(PlayerCount);
@@ -198,11 +220,11 @@ public class SixLineLogic
     /// <summary>
     /// 推进一逻辑帧（帧号从 1 连续递增，空帧也要 tick）。步骤固定序即确定性本身，
     /// 后续任务按下列编排填实现，禁止调整步骤顺序：
-    /// 1. 应用输入（长按移动/加速、点按旋转）(1-2)
-    /// 2. 三角组移动与下落（先触者锁定；▽ 落地后顶上两颗滚向单颗左右空位）(1-2)
-    /// 3. 消除与连锁（物理沉降 -> 特殊图形 + 同色连通块 ≥6 扫描 -> 消除 -> 再沉降 -> 复扫递归到稳定，结果存 Player）(1-3)
-    /// 4. 垃圾子投放（向对方棋盘投随机色子，单线 3/双线十字 5/连锁每级 +2）(1-4)
-    /// 5. 胜负判定（任一棋盘堆过高度线 GameOver，区分胜负方）(1-5)
+    /// 1. 应用输入（长按移动/加速、点按旋转）
+    /// 2. 三角组步进：下落/可沉降状态机（真实接触进容错 -> 容错到期或按住加速一次性结算：
+    ///    入板 + 同帧完整沉降 + 消除连锁 -> 下一组出生）
+    /// 3. 垃圾子投放（向对方棋盘投随机色子，单线 3/双线十字 5/连锁每级 +2）(1-4)
+    /// 4. 胜负判定（任一棋盘堆过高度线 GameOver，区分胜负方）(1-5)
     /// </summary>
     public void Tick(int absFrame, IList<SlInput> inputs)
     {
@@ -214,21 +236,17 @@ public class SixLineLogic
             for (int i = 0; i < inputs.Count; i++)
                 ApplyInput(inputs[i]);
 
-        // 2. 三角组移动与下落
+        // 2. 三角组步进（结算在组内触发时同帧完成，双端处理序固定即确定）
         for (int i = 0; i < Players.Count; i++)
         {
-            FallStep(absFrame, Players[i]);
+            StepGroup(absFrame, Players[i]);
             Players[i].MoveLeftHeld = false;  // 长按均为帧内瞬时标志
             Players[i].MoveRightHeld = false;
             Players[i].FastDropHeld = false;
         }
 
-        // 3. 消除与连锁（双方棋盘独立结算；结果供步骤 4 垃圾投放）
-        for (int i = 0; i < Players.Count; i++)
-            SettlePlayer(Players[i]);
-
-        // TODO(1-4) 4. 垃圾子投放
-        // TODO(1-5) 5. 胜负判定
+        // TODO(1-4) 3. 垃圾子投放
+        // TODO(1-5) 4. 胜负判定
     }
 
     private void ApplyInput(SlInput input)
@@ -249,10 +267,12 @@ public class SixLineLogic
                 p.MoveRightHeld = true;
                 break;
             case SlOp.RotateCW: // 点按：60° 顺时针（▲/▽ 互转 + 颜色轮换）
-                TryRotate(p, 1);
+                if (TryRotate(p, 1))
+                    ReevaluateContact(p); // 可沉降态旋转后重判接触（可能脱离回下落）
                 break;
             case SlOp.RotateCCW: // 点按：60° 逆时针
-                TryRotate(p, 5);
+                if (TryRotate(p, 5))
+                    ReevaluateContact(p);
                 break;
             case SlOp.FastDrop: // 长按：按住期间每帧发送
                 p.FastDropHeld = true;
@@ -261,12 +281,12 @@ public class SixLineLogic
     }
 
     /// <summary>
-    /// 旋转 60°（Rotation + step mod 6）：目标足迹在棋盘内的格须全为空才生效，否则拒绝（灰盒不做踢墙）。
+    /// 旋转 60°（Rotation + step mod 6）：目标足迹在棋盘内的格须全为空才生效，否则拒绝（不做踢墙）。
     /// ▽ 的奇行对占 col s/s+1，最右只能到 slot 7（奇行 9 格）；
     /// 行 ≥ Rows（棋盘顶之上）视为空；基准行取 Y 截断（Fix.Int，纯整数确定性）。
     /// 表现层按理想 60° 位渲染（与本足迹横移半格，见 SixLineView），落定时半格吸附归位
     /// </summary>
-    private void TryRotate(Player p, int step)
+    private bool TryRotate(Player p, int step)
     {
         var tri = p.Tri;
         var nr = (tri.Rotation + step) % 6;
@@ -275,131 +295,166 @@ public class SixLineLogic
         if ((nr & 1) == 1 && s > SlotCount - 2)
         {
             LastReject = RejectReason.RotationBlocked; // ▽ 奇行对越右墙
-            return;
+            return false;
         }
 
         var y = tri.Y.Int;
 
-        var ok = CellFree(p.Board, y, s + 1);                    // 偶行右格（▲/▽ 都占）
+        var ok = SlotUsable(p.Board, y + 1, s);                  // 奇行左格（▲ 顶点 / ▽ 左上，都占）
         if (ok && (nr & 1) == 0)
-            ok = CellFree(p.Board, y, s);                        // ▲ 偶行左格
-        if (ok)
-        {
-            ok = CellFree(p.Board, y + 1, s);                    // 奇行左格（▲/▽ 都占）
-            if (ok && (nr & 1) == 1)
-                ok = CellFree(p.Board, y + 1, s + 1);            // ▽ 奇行右格
-        }
+            ok = SlotUsable(p.Board, y, s) && SlotUsable(p.Board, y, s + 1)
+                && SlotUsable(p.Board, y + 1, SingleCol(y + 1, s));        // ▲ 偶行对 + 顶点
+        else if (ok)
+            ok = SlotUsable(p.Board, y + 1, s + 1) && SlotUsable(p.Board, y, SingleCol(y, s)); // ▽ 奇行右格 + 顶点
 
         if (!ok)
         {
             LastReject = RejectReason.RotationBlocked;
-            return;
+            return false;
         }
 
         tri.Rotation = nr;
-    }
-
-    private static bool CellFree(Board b, int row, int col)
-    {
-        if (row >= Rows) return true; // 棋盘顶之上视为空
-        return b.Get(row, col) == EmptyColor;
+        return true;
     }
 
     /// <summary>
-    /// 三角组移动与下落：长按按固定间隔步进槽位（同帧同按先左后右，确定性）；
-    /// 任一颗到达其接触行（取最低触地者）即整组刚性锁定
+    /// 三角组步进（下落/可沉降状态机）：
+    /// - 长按左右移动（间隔步进）：目标量化位与棋子重叠则拒绝本次移动
+    /// - Falling：持续下落，到达最深合法量化位（必有球真实贴住地板/山谷）转 Resting 并启动容错计时
+    /// - Resting：容错到期或按住加速 => 一次性结算；移动/旋转后脱离接触（ReevaluateContact）则回 Falling
     /// </summary>
-    private void FallStep(int absFrame, Player p)
+    private void StepGroup(int absFrame, Player p)
     {
         var tri = p.Tri;
-        if (tri.State != PieceState.Falling)
+        if (tri.State == PieceState.None)
             return;
 
-        // 长按左右移动（间隔步进；▽ 奇行对占 s/s+1，右界收一格）
-        if (absFrame % MoveIntervalFrames == 0)
+        // 左右平移：按住按 MoveSpeed 连续积分（丝滑无格跳）；量化列位变化时校验目标列，
+        // 被挡则钳到当前列边界（半格贴靠，量化列位不变），墙界钳到 [0, maxSlot]
+        var dir = 0;
+        if (p.MoveLeftHeld)
+            dir = -1;
+        else if (p.MoveRightHeld)
+            dir = 1;
+
+        if (dir != 0)
         {
+            var step = dir > 0 ? MoveSpeed : -MoveSpeed;
+            var qOld = tri.Slot;
+            var newX = tri.X + step;
+            var qNew = RoundSlot(newX);
+
+            if (qNew != qOld && !PlacementFree(p.Board, tri.Rotation, qNew, tri.Y.Int))
+            {
+                // 目标列被挡：钳回当前列边界（半格贴靠，量化列位不变）
+                newX = dir > 0
+                    ? Fix.FromInt(qOld) + Half - Fix.FromRaw(1)
+                    : Fix.FromInt(qOld) - Half;
+                LastReject = RejectReason.MoveBlocked;
+            }
+
             var maxSlot = SlotCount - 1 - (tri.Rotation & 1);
-            if (p.MoveLeftHeld)
-                tri.Slot--;
-            else if (p.MoveRightHeld)
-                tri.Slot++;
-            if (tri.Slot < 0)
-                tri.Slot = 0;
-            if (tri.Slot > maxSlot)
-                tri.Slot = maxSlot;
+            if (newX < Fix.FromInt(0))
+                newX = Fix.FromInt(0);
+            if (newX > Fix.FromInt(maxSlot))
+                newX = Fix.FromInt(maxSlot);
+
+            tri.X = newX;
+
+            if (tri.Slot != qOld)
+                ReevaluateContact(p); // 量化列位变化：重判接触（可沉降态可能脱离回下落态）
         }
 
-        tri.Y -= p.FastDropHeld ? FastFallSpeed : SlowFallSpeed;
-
-        // 触底判定：三颗各自路径的接触行，按"先触者"换算取最大（▲ 单颗在上 δ=+1 / ▽ 单颗在下 δ=0）
-        var s = tri.Slot;
-        int stop;
-        if ((tri.Rotation & 1) == 0) // ▲：偶行对（δ=0）+ 奇行单（δ=+1）
+        if (tri.State == PieceState.Falling)
         {
-            var cL = ContactRow(p.Board, s, true);
-            var cR = ContactRow(p.Board, s + 1, true);
-            var cO = ContactRow(p.Board, s, false);
-            stop = cL > cR ? cL : cR;
-            if (cO - 1 > stop)
-                stop = cO - 1;
-        }
-        else // ▽：偶行单（δ=0）+ 奇行对（δ=+1）
-        {
-            var cS = ContactRow(p.Board, s + 1, true);
-            var cOL = ContactRow(p.Board, s, false);
-            var cOR = ContactRow(p.Board, s + 1, false);
-            stop = cS;
-            if (cOL - 1 > stop)
-                stop = cOL - 1;
-            if (cOR - 1 > stop)
-                stop = cOR - 1;
+            tri.Y -= p.FastDropHeld ? FastFallSpeed : SlowFallSpeed;
+            var stop = DeepestStop(p.Board, tri.Rotation, tri.Slot, tri.Y.Int);
+            if (tri.Y <= Fix.FromInt(stop))
+            {
+                tri.Y = Fix.FromInt(stop);
+                tri.State = PieceState.Resting;
+                p.RestEndFrame = absFrame + GraceFrames; // 真实接触：进入容错期
+            }
+            return;
         }
 
-        if (tri.Y <= Fix.FromInt(stop))
-            LandTriomino(p, stop);
+        // Resting：容错到期或按住加速 => 一次性结算（入板 + 完整沉降 + 连锁 + 下一组）
+        if (absFrame >= p.RestEndFrame || p.FastDropHeld)
+            Collapse(p);
     }
 
-    /// <summary>
-    /// 路径接触行：该列相位路径自上而下第一个被占格的上一空位；全空则为地板行（偶 0/奇 1）。
-    /// 圆子沿路径逐格（间隔 2 行）下落，接触行即停位（锁定后悬空圆子留待 1-3 消除后的路径重力结算）
-    /// </summary>
-    private static int ContactRow(Board b, int col, bool evenPath)
+    /// <summary>移动/旋转后重判接触：当前位仍为最深合法位 = 仍接触保持 Resting；出现更深合法位 = 脱离回 Falling（容错作废，再接触重新计时）</summary>
+    private void ReevaluateContact(Player p)
     {
-        var top = evenPath ? Rows - 2 : Rows - 1;
-        var floor = evenPath ? 0 : 1;
-        for (var r = top; r >= floor; r -= 2)
-        {
-            if (b.Get(r, col) != EmptyColor)
-                return r + 2;
-        }
-        return floor;
+        var tri = p.Tri;
+        if (tri.State != PieceState.Resting)
+            return;
+        if (DeepestStop(p.Board, tri.Rotation, tri.Slot, tri.Y.Int) < tri.Y.Int)
+            tri.State = PieceState.Falling;
+    }
+
+    /// <summary>格位可用：行 ≥ Rows 视为空（棋盘顶之上）；列越界或已占视为不可用</summary>
+    private static bool SlotUsable(Board b, int row, int col)
+    {
+        if (row >= Rows)
+            return true;
+        return col >= 0 && col < RowCells(row) && b.Get(row, col) == EmptyColor;
     }
 
     /// <summary>
-    /// 落定：整组在先触位置刚性落位（▲ 稳定；▽ 的滚落由随后的物理沉降统一处理——
-    /// 顶上两颗会滚向单颗左右空位）。行 ≥ Rows 的圈不写入（顶部溢出由 1-5 判负收尾）。
-    /// 锁定后组即视为独立圆子
+    /// 组在基准行 k（下排行）的量化格位是否全部合法空置。▲：偶行对 (k,s)(k,s+1) + 顶点 (k+1,SingleCol)；
+    /// ▽：奇行对 (k+1,s)(k+1,s+1) + 顶点 (k,SingleCol)（列随行奇偶，渲染恒居中）
     /// </summary>
-    private void LandTriomino(Player p, int lockY)
+    private static bool PlacementFree(Board b, int rotation, int slot, int k)
+    {
+        if (k < 0)
+            return false;
+        if ((rotation & 1) == 0)
+            return SlotUsable(b, k, slot) && SlotUsable(b, k, slot + 1) && SlotUsable(b, k + 1, SingleCol(k + 1, slot));
+        return SlotUsable(b, k + 1, slot) && SlotUsable(b, k + 1, slot + 1) && SlotUsable(b, k, SingleCol(k, slot));
+    }
+
+    /// <summary>
+    /// 最深合法量化基准行：从 fromK 起逐行向下，首个被挡行之上即停（挡格必为组内某球的山谷贴位或地板，
+    /// 即真实接触）；fromK 自身被占（防御，如出生位被堆顶侵入）则向上找最近合法位
+    /// </summary>
+    private static int DeepestStop(Board b, int rotation, int slot, int fromK)
+    {
+        var k = fromK < 0 ? 0 : fromK;
+        while (k < Rows && !PlacementFree(b, rotation, slot, k))
+            k++;
+        while (k > 0 && PlacementFree(b, rotation, slot, k - 1))
+            k--;
+        return k;
+    }
+
+    /// <summary>
+    /// 一次性结算（容错到期/按住加速触发）：整组在当前量化位写入棋盘（行 ≥ Rows 不写入，
+    /// 顶部溢出由 1-5 判负收尾）-> 同帧完整沉降（坠落+嵌V+滚落一遍到底，无二段式）->
+    /// 消除连锁递归到稳定 -> 下一组出生
+    /// </summary>
+    private void Collapse(Player p)
     {
         var tri = p.Tri;
         var r = tri.Rotation;
         var s = tri.Slot;
-        if ((r & 1) == 0) // ▲：偶行对 + 上方奇行单
+        var k = tri.Y.Int;
+        if ((r & 1) == 0) // ▲：偶行对 + 顶点（列随奇偶，渲染恒居中）
         {
-            Place(p, lockY, s, tri.Colors[EvenLeftColor[r]]);
-            Place(p, lockY, s + 1, tri.Colors[EvenRightColor[r]]);
-            Place(p, lockY + 1, s, tri.Colors[OddLeftColor[r]]);
+            Place(p, k, s, tri.Colors[EvenLeftColor[r]]);
+            Place(p, k, s + 1, tri.Colors[EvenRightColor[r]]);
+            Place(p, k + 1, SingleCol(k + 1, s), tri.Colors[OddLeftColor[r]]);
         }
-        else // ▽：上方奇行对 + 下方偶行单（滚落交由 SettlePass）
+        else // ▽：奇行对 + 顶点（列随奇偶，渲染恒居中）
         {
-            Place(p, lockY + 1, s, tri.Colors[OddLeftColor[r]]);
-            Place(p, lockY + 1, s + 1, tri.Colors[OddRightColor[r]]);
-            Place(p, lockY, s + 1, tri.Colors[EvenRightColor[r]]);
+            Place(p, k + 1, s, tri.Colors[OddLeftColor[r]]);
+            Place(p, k + 1, s + 1, tri.Colors[OddRightColor[r]]);
+            Place(p, k, SingleCol(k, s), tri.Colors[EvenRightColor[r]]);
         }
 
         tri.State = PieceState.None;
-        p.RollAtFrame = LastTickFrame + SettleDelayFrames; // 完全落到支撑上，等缓冲期后再滚落
+        SettlePass(p); // 入板沉降：坠落 + 嵌 V + 滚落一遍到底
+        SettleChains(p);
         DrawNext(p);
     }
 
@@ -412,22 +467,15 @@ public class SixLineLogic
     // ---- 消除与连锁（1-3）----
 
     /// <summary>
-    /// 单方结算：落定沉降（垂直下落 + 就近嵌 V）-> 落定缓冲期（保持形态）-> 滚落归位 ->
-    /// 特殊图形检测 + 普通连通块扫描（≥ClearCount 同色相连标记）-> 消除 -> 沉降 -> 复扫，递归到稳定。
-    /// 每轮消除连锁 +1（首轮即 1 连锁），结果写入 Player（1-4 垃圾公式消费）
+    /// 消除与连锁：特殊图形检测 + 普通连通块扫描（≥ClearCount 同色相连标记）-> 消除 ->
+    /// 沉降（坠落+嵌V+滚落一遍到底）-> 复扫递归到稳定。每轮消除连锁 +1（首轮即 1 连锁），
+    /// 结果写入 Player（1-4 垃圾公式消费）。仅在入板/消除触发时运行
     /// </summary>
-    private void SettlePlayer(Player p)
+    private void SettleChains(Player p)
     {
         p.LastSettleChain = 0;
         p.LastSettleClusters = 0;
         p.RoundCount = 0;
-
-        SettlePass(p, rolling: false); // 落定沉降：垂直下落 + 就近嵌 V（单侧/悬停等延迟滚落）
-
-        if (LastTickFrame < p.RollAtFrame)
-            return; // 落定缓冲期：保持形态，等 SettleDelaySec 后滚落/消除
-
-        SettlePass(p, rolling: true); // 缓冲结束：滚落归位
 
         while (p.RoundCount < MaxSettleRounds)
         {
@@ -437,8 +485,7 @@ public class SixLineLogic
             if (cells == 0)
                 break;
 
-            SettlePass(p, rolling: false); // 消除后：坠落 + 嵌 V
-            SettlePass(p, rolling: true);  // 消除后：滚落归位
+            SettlePass(p); // 消除后沉降：坠落 + 嵌 V + 滚落一遍到底
 
             p.LastSettleChain++;
             p.LastSettleClusters += clusters;
@@ -660,11 +707,10 @@ public class SixLineLogic
 
     /// <summary>
     /// 沉降一遍（自底向上逐个圆子沉降到稳定位）。稳定 = V 支撑（双下斜位均占用）/ 地板
-    /// （偶相位 row0、奇相位最低行 row1）/ 单侧支撑+墙楔。rolling=false：垂直下落 + 就近嵌 V，
-    /// 单侧支撑与无 V 可达的平衡位停在原地（等延迟滚落）；rolling=true：单侧支撑滚向空侧、
-    /// 平衡左滚（确定性破平局）。落定与消除后共用，任何浮空都会被沉降消除
+    /// （偶相位 row0、奇相位最低行 row1）/ 单侧支撑+墙楔。单侧支撑滚向空侧、平衡左滚
+    /// （确定性破平局），一遍到底无悬停。入板与消除后共用，任何浮空都会被沉降消除
     /// </summary>
-    private void SettlePass(Player p, bool rolling)
+    private void SettlePass(Player p)
     {
         var cells = p.Board.Cells;
         for (int r = 0; r < Rows; r++)
@@ -677,18 +723,17 @@ public class SixLineLogic
                     continue;
 
                 cells[idx] = EmptyColor; // 取出再沉降，目标判定不受自身影响
-                SettleOne(cells, r, c, color, rolling);
+                SettleOne(cells, r, c, color);
             }
         }
     }
 
     /// <summary>
-    /// 单圆沉降：垂直下落 + 就近嵌 V，直至稳定。稳定 = V 支撑 / 地板（偶 row0、奇 row1）/ 单侧+墙楔。
-    /// 单侧支撑：rolling=false 停在原地（等延迟滚落），true 滚向空侧（另一侧为墙则楔住）；
-    /// 双下斜位全空：垂直下落，正下方被占 = 平衡 -> 就近嵌 V（左/右候选格自身构成 V 即滚向该侧，
-    /// 平局左滚；均不构成 V：未到滚落时机悬停、已到时机左滚）
+    /// 单圆沉降：垂直下落 + 就近嵌 V + 滚落，一遍到稳定。稳定 = V 支撑 / 地板（偶 row0、奇 row1）/ 单侧+墙楔。
+    /// 单侧支撑滚向空侧（另一侧为墙则楔住）；双下斜位全空：垂直下落，正下方被占 = 平衡 ->
+    /// 就近嵌 V（左/右候选格自身构成 V 即滚向该侧，平局左滚；均不构成 V：左滚）
     /// </summary>
-    private void SettleOne(int[] cells, int row, int col, int color, bool rolling)
+    private void SettleOne(int[] cells, int row, int col, int color)
     {
         while (true)
         {
@@ -705,10 +750,10 @@ public class SixLineLogic
 
             if (blOcc != brOcc)
             {
-                // 单侧支撑：另一侧为墙则楔住；否则等延迟滚落
+                // 单侧支撑：另一侧为墙则楔住；否则滚向空侧
                 var empty = blOcc ? br : bl;
-                if (empty < 0 || !rolling)
-                    break;
+                if (empty < 0)
+                    break; // 墙楔
                 row = _rowOf[empty];
                 col = _colOf[empty];
                 continue;
@@ -735,13 +780,11 @@ public class SixLineLogic
                     col = _colOf[br];
                     continue;
                 }
-                if (!rolling)
-                    break; // 无 V 可达：悬停等延迟滚落
                 if (bl >= 0 && cells[bl] == EmptyColor)
                 {
                     row = _rowOf[bl];
                     col = _colOf[bl];
-                    continue; // 已到滚落时机：左滚
+                    continue; // 无 V 可达：左滚
                 }
                 row = _rowOf[br];
                 col = _colOf[br];
@@ -774,7 +817,7 @@ public class SixLineLogic
         tri.Colors[2] = SharedSeq[p.SeqPos + 2];
         p.SeqPos += 3;
         tri.Rotation = 0;
-        tri.Slot = SlotCount / 2;   // 默认中间槽位出生
+        tri.X = Fix.FromInt(SlotCount / 2); // 默认中间列出生
         tri.Y = Fix.FromInt(Rows);  // 从棋盘顶部之上起落
         tri.State = PieceState.Falling;
     }
@@ -812,11 +855,11 @@ public class SixLineLogic
             Mix(ref h, p.Tri.Colors[0]);
             Mix(ref h, p.Tri.Colors[1]);
             Mix(ref h, p.Tri.Colors[2]);
-            Mix(ref h, p.Tri.Slot);
+            Mix(ref h, p.Tri.X.Raw);    // 连续列位（量化槽位 Slot 派生自 X）
             Mix(ref h, p.Tri.Y.Raw);
             Mix(ref h, (int)p.Tri.State);
-            Mix(ref h, p.Tri.Rotation); // 1-2 追加：旋转状态
-            Mix(ref h, p.RollAtFrame);  // 1-3 追加：滚落允许帧（落定缓冲期）
+            Mix(ref h, p.Tri.Rotation);  // 1-2 追加：旋转状态
+            Mix(ref h, p.RestEndFrame);  // 状态机改造：可沉降容错截止帧
         }
 
         // TODO(1-3 起) 消除/连锁/垃圾子等状态按固定序追加

@@ -187,10 +187,10 @@ public class SixLineView : BattleView
 
             // 新组出生：从池取三颗按球序绑定（0=A 1=B 2=C），Pos = 首帧理想渲染位（无位移感）
             var y0 = tri.Y.AsFloat;
-            var s0 = tri.Slot;
+            var x0 = tri.X.AsFloat;
             for (int b = 0; b < 3; b++)
             {
-                BallIdealPos(tri.Rotation, s0, y0, b, out var bx, out var by);
+                BallIdealPos(tri.Rotation, x0, y0, b, out var bx, out var by);
                 var a = TakeFromPool(bv);
                 bv.TriAnims[b] = a;
                 a.Speed = TriFollowSpeed;
@@ -203,22 +203,25 @@ public class SixLineView : BattleView
             bv.TriRotation = tri.Rotation;
         }
 
-        if (bv.TriActive && tri.State == SixLineLogic.PieceState.Falling)
+        if (bv.TriActive &&
+            (tri.State == SixLineLogic.PieceState.Falling || tri.State == SixLineLogic.PieceState.Resting))
         {
-            // 三颗按球序（0=A 1=B 2=C）走位到各自理想渲染位（▲ 格点位 / ▽ 理想 60° 位），颜色身份不变
+            // 三颗按球序（0=A 1=B 2=C）走位，颜色身份不变：下落与容错期均按理想 60° 位渲染
+            // （笔直不摆动、不吸附，玩家所见即调整基准）；结算入板时视觉圈滑向格点位
+            // （整组按基准行相位刚性相移 ≤0.5 格 + 物理滚动，形状不变形）
             var r = tri.Rotation;
             var y = tri.Y.AsFloat;
-            var s = tri.Slot;
+            var x = tri.X.AsFloat;
 
             if (bv.TriRotation != r)
             {
                 // 旋转过渡：三球按统一时长转向新姿态（走位过程即 60° 旋转表现）
                 for (int b = 0; b < 3; b++)
                 {
-                    BallIdealPos(r, s, y, b, out var bx, out var by);
-                    var a = bv.TriAnims[b];
+                    BallIdealPos(r, x, y, b, out var bx, out var by);
                     var tx = bx * bv.Cell;
                     var ty = by * bv.Cell;
+                    var a = bv.TriAnims[b];
                     var d = Vector2.Distance(new Vector2(tx, ty), a.Pos);
                     a.Speed = d > 0.0001f ? d / RotAnimSec : TriFollowSpeed;
                     SetTriTarget(a, tx, ty, tri.Colors[b]);
@@ -229,9 +232,10 @@ public class SixLineView : BattleView
             {
                 for (int b = 0; b < 3; b++)
                 {
-                    BallIdealPos(r, s, y, b, out var bx, out var by);
-                    bv.TriAnims[b].Speed = TriFollowSpeed; // 过渡已结束：恢复跟随速度，避免旋转低速残留导致移动掉队
-                    SetTriTarget(bv.TriAnims[b], bx * bv.Cell, by * bv.Cell, tri.Colors[b]);
+                    BallIdealPos(r, x, y, b, out var bx, out var by);
+                    var a = bv.TriAnims[b];
+                    a.Speed = TriFollowSpeed; // 过渡已结束：恢复跟随速度，避免旋转低速残留导致移动掉队
+                    SetTriTarget(a, bx * bv.Cell, by * bv.Cell, tri.Colors[b]);
                 }
             }
         }
@@ -406,20 +410,24 @@ public class SixLineView : BattleView
         return na;
     }
 
-    /// <summary>球 ball（0=A,1=B,2=C）在姿态 r 的理想渲染位（格单位局部坐标；▲=格点位，▽=理想 60° 位）</summary>
-    private static void BallIdealPos(int r, int s, float y, int ball, out float x, out float py)
+    /// <summary>
+    /// 球 ball 下落/容错期渲染位（格单位，固定居中相位的理想 60° 位，x 为连续列位）：偶行对 (x+0.5/x+1.5, y+0.5)、
+    /// 奇行对 (x+0.5/x+1.5, y+1.5)、单球 (x+1, y±0.5)。结算入板时视觉圈滑向格点位
+    /// （整组按基准行相位刚性相移 ≤0.5 格 + 物理滚动，形状不变形）
+    /// </summary>
+    private static void BallIdealPos(int r, float x, float y, int ball, out float bx, out float by)
     {
         if ((r & 1) == 0)
         {
-            if (SixLineLogic.EvenLeftColor[r] == ball) { x = s + 0.5f; py = y + 0.5f; }
-            else if (SixLineLogic.EvenRightColor[r] == ball) { x = s + 1.5f; py = y + 0.5f; }
-            else { x = s + 1f; py = y + 1.5f; } // OddLeftColor[r]
+            if (SixLineLogic.EvenLeftColor[r] == ball) { bx = x + 0.5f; by = y + 0.5f; }
+            else if (SixLineLogic.EvenRightColor[r] == ball) { bx = x + 1.5f; by = y + 0.5f; }
+            else { bx = x + 1f; by = y + 1.5f; } // OddLeftColor[r]
         }
         else
         {
-            if (SixLineLogic.OddLeftColor[r] == ball) { x = s + 0.5f; py = y + 1.5f; }
-            else if (SixLineLogic.OddRightColor[r] == ball) { x = s + 1.5f; py = y + 1.5f; }
-            else { x = s + 1f; py = y + 0.5f; } // EvenRightColor[r]
+            if (SixLineLogic.OddLeftColor[r] == ball) { bx = x + 0.5f; by = y + 1.5f; }
+            else if (SixLineLogic.OddRightColor[r] == ball) { bx = x + 1.5f; by = y + 1.5f; }
+            else { bx = x + 1f; by = y + 0.5f; } // EvenRightColor[r]
         }
     }
 

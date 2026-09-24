@@ -26,8 +26,8 @@ public struct SlInput
 /// <summary>操作类型常量（阶段 3 定稿 proto 后与 NetMsg.PlayerInput.OpType 对齐）</summary>
 public static class SlOp
 {
-    public const int MoveLeft = 1;   // 长按：左移一格（按 MoveIntervalFrames 间隔步进）
-    public const int MoveRight = 2;  // 长按：右移一格
+    public const int MoveLeft = 1;   // 长按：左移（连续平移，速度 SixLineLogic.MoveSpeed）
+    public const int MoveRight = 2;  // 长按：右移（连续平移）
     public const int RotateCW = 3;   // 点按：60° 顺时针（▲/▽ 互转 + 颜色轮换）
     public const int RotateCCW = 4;  // 点按：60° 逆时针
     public const int FastDrop = 5;   // 长按：加速下落
