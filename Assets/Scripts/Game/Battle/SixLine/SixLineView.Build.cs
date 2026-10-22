@@ -12,9 +12,7 @@ using UnityEngine;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// 六连珠表现层 · 灰盒图元构建（partial）：
-/// 棋盘底板/危险区罩/圆形棋子（共享圆盘网格 + 实例材质上色）、格中心局部坐标。
-/// 当前用 Sprites/Default（Editor 灰盒够用），真机材质兜底链随 1-6 重建为 ViewMats
+/// 六连珠表现层 · 灰盒图元构建（partial）。当前用 Sprites/Default，真机材质随 1-6 重建。
 /// </summary>
 public partial class SixLineView
 {
@@ -28,7 +26,7 @@ public partial class SixLineView
         new(0.70f, 0.40f, 0.90f, 1f),
     };
 
-    private static Mesh _circleMesh; // 圆盘网格（扇形三角化，半径 0.5，全局共享）
+    private static Mesh _circleMesh; // 圆盘网格（半径 0.5，全局共享）
 
     private BoardView BuildBoard(string name, Vector2 origin, float cell)
     {
@@ -42,7 +40,7 @@ public partial class SixLineView
             Free = new List<CircleAnim>(SixLineLogic.TotalCells + 3),
         };
         bv.Root.SetParent(_root, false);
-        bv.Root.position = origin; // 棋盘左下角锚定
+        bv.Root.position = origin;
 
         var w = BoardWidth * cell;
         var h = SixLineLogic.Rows * cell;
@@ -55,7 +53,7 @@ public partial class SixLineView
         MakeQuad(bv.Root, "Danger", w, dh, new Color(0.9f, 0.2f, 0.2f, 0.15f))
             .localPosition = new Vector3(w * 0.5f, h - dh * 0.5f, 0.3f);
 
-        // 视觉圈池（TotalCells 格 + 3 颗下落组，全部先入空闲池隐藏）
+        // 视觉圈池：TotalCells 格 + 3 颗下落组，先全部隐藏入池
         for (int i = 0; i < SixLineLogic.TotalCells + 3; i++)
         {
             var a = new CircleAnim
@@ -71,19 +69,18 @@ public partial class SixLineView
         return bv;
     }
 
-    /// <summary>格中心局部坐标（蜂窝错行：偶行 x=col+0.5，奇行 x=col+1）</summary>
+    /// <summary>格中心局部坐标（偶行 x=col+0.5，奇行 x=col+1）</summary>
     private static Vector3 CellLocal(int row, int col, float cell, float z)
     {
         var x = col + 0.5f + (SixLineLogic.RowIsWide(row) ? 0f : 0.5f);
         return new Vector3(x * cell, (row + 0.5f) * cell, z);
     }
 
-    /// <summary>图元方块（底板/危险区罩；Sprites/Default，Editor 灰盒够用，真机兜底随 1-6 重建 ViewMats）</summary>
     private static Transform MakeQuad(Transform parent, string name, float w, float h, Color color)
     {
         var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
         go.name = name;
-        Object.Destroy(go.GetComponent<Collider>()); // 图元自带碰撞体，纯表现去掉
+        Object.Destroy(go.GetComponent<Collider>()); // 纯表现，去掉图元自带碰撞体
 
         var mr = go.GetComponent<MeshRenderer>();
         mr.material = new Material(Shader.Find("Sprites/Default")) { color = color };
@@ -94,7 +91,6 @@ public partial class SixLineView
         return tr;
     }
 
-    /// <summary>圆形棋子（共享圆盘网格 + 实例材质上色）</summary>
     private static Transform MakeCircle(Transform parent, string name, float diameter, Color color)
     {
         var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
@@ -108,7 +104,6 @@ public partial class SixLineView
         return tr;
     }
 
-    /// <summary>圆盘网格（24 段扇形，半径 0.5，随缩放适配格尺寸）</summary>
     private static Mesh CircleMesh()
     {
         if (_circleMesh != null)

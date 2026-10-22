@@ -7,17 +7,11 @@
  */
 
 /// <summary>
-/// 六连珠逻辑层 · 物理沉降（partial）：
-/// 自底向上逐个圆子落到稳定位（V 支撑 / 地板 / 单侧支撑+墙楔），一遍到底无悬停。
-/// 入板与每次消除后共用，任何浮空当帧消除；纯棋盘操作，不含随机与事件
+/// 六连珠逻辑层 · 物理沉降（partial）：自底向上把每个圆子落到稳定位，一遍到底无悬停。
+/// 入板与每次消除后共用。
 /// </summary>
 public partial class SixLineLogic
 {
-    /// <summary>
-    /// 沉降一遍（自底向上逐个圆子沉降到稳定位）。稳定 = V 支撑（双下斜位均占用）/ 地板
-    /// （偶相位 row0、奇相位最低行 row1）/ 单侧支撑+墙楔。单侧支撑滚向空侧、平衡左滚
-    /// （确定性破平局），一遍到底无悬停。入板与消除后共用，任何浮空都会被沉降消除
-    /// </summary>
     private void SettlePass(Player p)
     {
         var cells = p.Board.Cells;
@@ -30,16 +24,15 @@ public partial class SixLineLogic
                 if (color == EmptyColor)
                     continue;
 
-                cells[idx] = EmptyColor; // 取出再沉降，目标判定不受自身影响
+                cells[idx] = EmptyColor; // 先取出，目标判定不受自身影响
                 SettleOne(cells, r, c, color);
             }
         }
     }
 
     /// <summary>
-    /// 单圆沉降：垂直下落 + 就近嵌 V + 滚落，一遍到稳定。稳定 = V 支撑 / 地板（偶 row0、奇 row1）/ 单侧+墙楔。
-    /// 单侧支撑滚向空侧（另一侧为墙则楔住）；双下斜位全空：垂直下落，正下方被占 = 平衡 ->
-    /// 就近嵌 V（左/右候选格自身构成 V 即滚向该侧，平局左滚；均不构成 V：左滚）
+    /// 单圆沉降。稳定 = V 支撑 / 地板 / 单侧支撑+墙楔。单侧支撑滚向空侧；
+    /// 平衡在正下方时就近嵌 V，平局左滚（确定性破平局）。
     /// </summary>
     private void SettleOne(int[] cells, int row, int col, int color)
     {
@@ -54,11 +47,10 @@ public partial class SixLineLogic
             var brOcc = br >= 0 && cells[br] != EmptyColor;
 
             if (blOcc && brOcc)
-                break; // V 支撑
+                break;
 
             if (blOcc != brOcc)
             {
-                // 单侧支撑：另一侧为墙则楔住；否则滚向空侧
                 var empty = blOcc ? br : bl;
                 if (empty < 0)
                     break; // 墙楔
@@ -67,13 +59,11 @@ public partial class SixLineLogic
                 continue;
             }
 
-            // 双下斜位全空（或墙）：垂直下落一格（路径内 -2 行）
-            var nr = row - 2;
+            var nr = row - 2; // 双下斜位全空：垂直下落一格
             if (nr < 0)
-                break; // 奇相位最低行（row1）
+                break; // 奇相位最低行
             if (cells[RowStart(nr) + col] != EmptyColor)
             {
-                // 平衡在正下方圆子上：就近嵌 V（左/右候选格自身构成 V 即滚向该侧，平局左滚）
                 var blV = bl >= 0 && VAt(cells, _rowOf[bl], _colOf[bl]);
                 var brV = br >= 0 && VAt(cells, _rowOf[br], _colOf[br]);
                 if (blV)
@@ -104,7 +94,7 @@ public partial class SixLineLogic
         cells[RowStart(row) + col] = color;
     }
 
-    /// <summary>(row,col) 是否构成 V 支撑位（双下斜位均占用）</summary>
+    /// <summary>是否构成 V 支撑位（双下斜位均占用）</summary>
     private bool VAt(int[] cells, int row, int col)
     {
         var a = Neighbor(row, col, 5);
