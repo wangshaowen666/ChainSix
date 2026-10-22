@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作区目录 · ChainSix</title>
+<style>
+  :root{
+    --bg:#0d1014; --panel:#12161c; --line:#20262f;
+    --fg:#d7dce4; --fg-dim:#8a93a0; --fg-faint:#5d6673;
+    --accent:#5aa9ff; --folder:#e0b25c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:13px/1.5 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:flex; flex-direction:column; height:100vh; min-width:280px}
+  header{
+    padding:10px 12px 9px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#141a21,#10141a); flex:none;
+  }
+  .title{display:flex; align-items:baseline; gap:8px}
+  .title b{font-size:13.5px; font-weight:600; letter-spacing:.2px}
+  .title span{font-size:11px; color:var(--fg-faint); font-variant-numeric:tabular-nums}
+  .path{
+    margin-top:2px; font-size:11px; color:var(--fg-faint);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .search{
+    margin-top:9px; display:flex; align-items:center; gap:6px;
+    background:#0b0e12; border:1px solid var(--line); border-radius:6px;
+    padding:0 8px; height:28px; transition:border-color .15s;
+  }
+  .search:focus-within{border-color:#2f5b86}
+  .search input{
+    flex:1; min-width:0; border:0; outline:0; background:transparent;
+    color:var(--fg); font-size:12px; font-family:inherit;
+  }
+  .search input::placeholder{color:var(--fg-faint)}
+  .search .k{font-size:10px; color:var(--fg-faint); border:1px solid var(--line);
+    border-radius:3px; padding:0 4px; line-height:15px}
+  #tree{flex:1; overflow:auto; padding:6px 6px 24px}
+  #tree::-webkit-scrollbar{width:9px}
+  #tree::-webkit-scrollbar-thumb{background:#242b35; border-radius:5px}
+  #tree::-webkit-scrollbar-thumb:hover{background:#313a47}
+  .row{
+    display:flex; align-items:center; gap:5px; height:22px; padding-right:8px;
+    border-radius:4px; cursor:default; white-space:nowrap; position:relative;
+  }
+  .row:hover{background:#1a2028}
+  .row.file{cursor:pointer}
+  .row.file:hover .name{color:#fff}
+  .chev{
+    width:12px; flex:none; text-align:center; color:var(--fg-faint);
+    font-size:9px; transition:transform .12s ease; user-select:none;
+  }
+  .chev.open{transform:rotate(90deg)}
+  .chev.hide{visibility:hidden}
+  .ic{width:14px; flex:none; text-align:center; font-size:10px; color:var(--folder);
+    font-family:ui-monospace,Menlo,monospace; opacity:.95}
+  .name{overflow:hidden; text-overflow:ellipsis; font-size:12.5px}
+  .dir>.name{color:#c9d2de; font-weight:500}
+  .file .name{color:#aeb8c5}
+  .cnt{margin-left:auto; font-size:10.5px; color:var(--fg-faint); padding-left:8px;
+    font-variant-numeric:tabular-nums; opacity:0; transition:opacity .1s}
+  .row:hover .cnt{opacity:1}
+  .kids{margin-left:11px; border-left:1px solid #1b212a; padding-left:4px}
+  .kids.hide{display:none}
+  .empty{padding:18px 12px; color:var(--fg-faint); font-size:12px}
+  footer{
+    flex:none; border-top:1px solid var(--line); padding:6px 12px;
+    font-size:10.5px; color:var(--fg-faint); display:flex; gap:10px;
+    justify-content:space-between; background:#10141a;
+  }
+  #toast{
+    position:fixed; left:50%; bottom:34px; transform:translate(-50%,8px);
+    background:#1d2530; color:#dfe6ef; border:1px solid #2c3644;
+    padding:6px 12px; border-radius:6px; font-size:12px; opacity:0;
+    pointer-events:none; transition:.18s; max-width:90%; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+  #toast.on{opacity:1; transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title"><b>工作区目录</b><span>605 文件 · 170 目录 · 55.1 MB</span></div>
+    <div class="path">/Users/wangshaowen/ChainSix</div>
+    <div class="search">
+      <input id="q" placeholder="过滤文件或目录…" autocomplete="off" spellcheck="false">
+      <span class="k">/</span>
+    </div>
+  </header>
+  <div id="tree"></div>
+  <footer><span>生成于 2026-10-22 13:49</span><span>点击文件复制路径</span></footer>
+</div>
+<div id="toast"></div>
+
+<script>
+const DATA = {"n":"ChainSix","t":"d","c":[{"n":".trae","t":"d","c":[{"n":"rules","t":"d","c":[{"n":"memos_memory.md","t":"f","s":4043},{"n":"sync-to-agents-md.sh","t":"f","s":1506},{"n":"配置表规范.md","t":"f","s":520},{"n":"项目规范.md","t":"f","s":707}]}]},{"n":"Assets","t":"d","c":[{"n":"AddressableAssetsData","t":"d","c":[{"n":"AssetGroups","t":"d","c":[{"n":"Schemas","t":"d","c":[{"n":"Built In Data_PlayerDataGroupSchema.asset","t":"f","s":568},{"n":"Default Local Group_BundledAssetGroupSchema.asset","t":"f","s":1550},{"n":"Default Local Group_ContentUpdateGroupSchema.asset","t":"f","s":533},{"n":"Remote_BattlePanel_BundledAssetGroupSchema.asset","t":"f","s":1550},{"n":"Remote_BattlePanel_ContentUpdateGroupSchema.asset","t":"f","s":532},{"n":"Remote_DataTable_BundledAssetGroupSchema.asset","t":"f","s":1548},{"n":"Remote_DataTable_ContentUpdateGroupSchema.asset","t":"f","s":530},{"n":"Remote_GameDll_BundledAssetGroupSchema.asset","t":"f","s":1546},{"n":"Remote_GameDll_ContentUpdateGroupSchema.asset","t":"f","s":528},{"n":"Remote_LoadingPanel_BundledAssetGroupSchema.asset","t":"f","s":1551},{"n":"Remote_LoadingPanel_ContentUpdateGroupSchema.asset","t":"f","s":533},{"n":"Remote_MainPanel_BundledAssetGroupSchema.asset","t":"f","s":1548},{"n":"Remote_MainPanel_ContentUpdateGroupSchema.asset","t":"f","s":530},{"n":"Remote_Scene_BundledAssetGroupSchema.asset","t":"f","s":1544},{"n":"Remote_Scene_ContentUpdateGroupSchema.asset","t":"f","s":526}]},{"n":"Built In Data.asset","t":"f","s":1019},{"n":"Default Local Group.asset","t":"f","s":822},{"n":"Remote_BattlePanel.asset","t":"f","s":979},{"n":"Remote_DataTable.asset","t":"f","s":1158},{"n":"Remote_GameDll.asset","t":"f","s":968},{"n":"Remote_LoadingPanel.asset","t":"f","s":982},{"n":"Remote_MainPanel.asset","t":"f","s":973},{"n":"Remote_Scene.asset","t":"f","s":1117}]},{"n":"AssetGroupTemplates","t":"d","c":[{"n":"Packed Assets.asset","t":"f","s":2138}]},{"n":"DataBuilders","t":"d","c":[{"n":"BuildScriptFastMode.asset","t":"f","s":810},{"n":"BuildScriptPackedMode.asset","t":"f","s":812},{"n":"BuildScriptPackedPlayMode.asset","t":"f","s":816},{"n":"BuildScriptVirtualMode.asset","t":"f","s":813}]},{"n":"AddressableAssetSettings.asset","t":"f","s":4812},{"n":"DefaultObject.asset","t":"f","s":469}]},{"n":"HybridCLRGenerate","t":"d","c":[{"n":"link.xml","t":"f","s":14263}]},{"n":"Plugins","t":"d","c":[{"n":"Demigiant","t":"d","c":[{"n":"DOTween","t":"d","c":[{"n":"Editor","t":"d","c":[{"n":"Imgs","t":"d","c":[{"n":"DOTweenIcon.png","t":"f","s":1565},{"n":"DOTweenMiniIcon.png","t":"f","s":319},{"n":"Footer.png","t":"f","s":4409},{"n":"Footer_dark.png","t":"f","s":4429},{"n":"Header.jpg","t":"f","s":22787}]},{"n":"DOTweenEditor.dll","t":"f","s":70656},{"n":"DOTweenEditor.dll.mdb","t":"f","s":12646},{"n":"DOTweenEditor.XML","t":"f","s":7956}]},{"n":"Modules","t":"d","c":[{"n":"DOTween.Modules.asmdef","t":"f","s":31},{"n":"DOTweenModuleAudio.cs","t":"f","s":8943},{"n":"DOTweenModuleEPOOutline.cs","t":"f","s":6855},{"n":"DOTweenModulePhysics.cs","t":"f","s":13989},{"n":"DOTweenModulePhysics2D.cs","t":"f","s":12125},{"n":"DOTweenModuleSprite.cs","t":"f","s":4166},{"n":"DOTweenModuleUI.cs","t":"f","s":43245},{"n":"DOTweenModuleUnityVersion.cs","t":"f","s":18321},{"n":"DOTweenModuleUtils.cs","t":"f","s":6719}]},{"n":"DOTween.dll","t":"f","s":177664},{"n":"DOTween.dll.mdb","t":"f","s":68050},{"n":"DOTween.XML","t":"f","s":234735},{"n":"readme.txt","t":"f","s":2190}]}]},{"n":"Dlls","t":"d","c":[{"n":"Google.Protobuf.dll","t":"f","s":501912},{"n":"MiniJSON.dll","t":"f","s":9728}]},{"n":"LiteNetLib","t":"d","c":[{"n":"LiteNetLib.csproj","t":"f","s":2281}]},{"n":"Sirenix","t":"d","c":[{"n":"Assemblies","t":"d","c":[{"n":"NoEditor","t":"d","c":[{"n":"Sirenix.Serialization.dll","t":"f","s":363520},{"n":"Sirenix.Serialization.dll.backup.txt","t":"f","s":1642},{"n":"Sirenix.Serialization.pdb","t":"f","s":156616},{"n":"Sirenix.Utilities.dll","t":"f","s":160768},{"n":"Sirenix.Utilities.dll.backup.txt","t":"f","s":1642},{"n":"Sirenix.Utilities.pdb","t":"f","s":55584}]},{"n":"NoEmitAndNoEditor","t":"d","c":[{"n":"Sirenix.Serialization.dll","t":"f","s":347136},{"n":"Sirenix.Serialization.dll.backup.txt","t":"f","s":1620},{"n":"Sirenix.Serialization.pdb","t":"f","s":150676},{"n":"Sirenix.Utilities.dll","t":"f","s":151552},{"n":"Sirenix.Utilities.dll.backup.txt","t":"f","s":1620},{"n":"Sirenix.Utilities.pdb","t":"f","s":51800}]},{"n":"link.xml.backup.txt","t":"f","s":305},{"n":"Sirenix.OdinInspector.Attributes.dll","t":"f","s":108544},{"n":"Sirenix.OdinInspector.Attributes.pdb","t":"f","s":31360},{"n":"Sirenix.OdinInspector.Attributes.xml","t":"f","s":331637},{"n":"Sirenix.OdinInspector.Editor.dll","t":"f","s":3452416},{"n":"Sirenix.OdinInspector.Editor.pdb","t":"f","s":641440},{"n":"Sirenix.OdinInspector.Editor.xml","t":"f","s":668681},{"n":"Sirenix.Reflection.Editor.dll","t":"f","s":38400},{"n":"Sirenix.Reflection.Editor.pdb","t":"f","s":11356},{"n":"Sirenix.Serialization.Config.dll","t":"f","s":17920},{"n":"Sirenix.Serialization.Config.dll.backup.txt","t":"f","s":1096},{"n":"Sirenix.Serialization.Config.pdb","t":"f","s":2856},{"n":"Sirenix.Serialization.Config.xml","t":"f","s":8895},{"n":"Sirenix.Serialization.dll","t":"f","s":412160},{"n":"Sirenix.Serialization.pdb","t":"f","s":171700},{"n":"Sirenix.Serialization.xml","t":"f","s":594634},{"n":"Sirenix.Utilities.dll","t":"f","s":170496},{"n":"Sirenix.Utilities.Editor.dll","t":"f","s":1244672},{"n":"Sirenix.Utilities.Editor.pdb","t":"f","s":171372},{"n":"Sirenix.Utilities.Editor.xml","t":"f","s":600873},{"n":"Sirenix.Utilities.pdb","t":"f","s":57584},{"n":"Sirenix.Utilities.xml","t":"f","s":205325}]},{"n":"Demos","t":"d","c":[{"n":"Editor Windows","t":"d","c":[{"n":"Scripts","t":"d","c":[{"n":"Editor","t":"d","c":[{"n":"BasicOdinEditorExampleWindow.cs","t":"f","s":972},{"n":"OdinMenuEditorWindowExample.cs","t":"f","s":2976},{"n":"OdinMenuStyleExample.cs","t":"f","s":4370},{"n":"OverrideGetTargetsExampleWindow.cs","t":"f","s":2225},{"n":"QuicklyInspectObjects.cs","t":"f","s":2334},{"n":"SomeData.cs","t":"f","s":1228},{"n":"SomeTextureToolWindow.cs","t":"f","s":1577}]}]}]},{"n":"Custom Attribute Processors.unitypackage","t":"f","s":6495},{"n":"Custom Drawers.unitypackage","t":"f","s":13313},{"n":"Editor Windows.unitypackage","t":"f","s":5017},{"n":"Sample - RPG Editor.unitypackage","t":"f","s":921699}]},{"n":"Odin Inspector","t":"d","c":[{"n":"Assets","t":"d","c":[{"n":"Editor","t":"d","c":[{"n":"Hidden","t":"d","c":[{"n":"ExtractSpriteShader.shader","t":"f","s":1334},{"n":"GUIUtilShader.shader","t":"f","s":3127},{"n":"LazyEditorIconShader.shader","t":"f","s":1565},{"n":"SdfIconShader.shader","t":"f","s":3360}]},{"n":"Bootstrap License.txt","t":"f","s":1346},{"n":"ConfigData.bytes","t":"f","s":1616},{"n":"OdinPathLookup.asset","t":"f","s":380},{"n":"SdfIconAtlas.png","t":"f","s":1834055}]}]},{"n":"Config","t":"d","c":[{"n":"Editor","t":"d","c":[{"n":"AOTGenerationConfig.asset","t":"f","s":564},{"n":"ColorPaletteManager.asset","t":"f","s":4721},{"n":"GeneralDrawerConfig.asset","t":"f","s":719},{"n":"GlobalSerializationConfig.asset","t":"f","s":694},{"n":"ImportSettingsConfig.asset","t":"f","s":435},{"n":"InspectorConfig.asset","t":"f","s":528},{"n":"OdinModuleConfig.asset","t":"f","s":584},{"n":"OdinVisualDesignerConfig.asset","t":"f","s":521},{"n":"TypeRegistryUserConfig.asset","t":"f","s":642}]}]},{"n":"Modules","t":"d","c":[{"n":"Unity.Addressables","t":"d","c":[{"n":"Internal","t":"d","c":[{"n":"OdinAddressableReflection.cs","t":"f","s":888},{"n":"OdinAddressableReflectionValidator.cs","t":"f","s":1302}]},{"n":"Validators","t":"d","c":[{"n":"AssetLabelReferenceValidator.cs","t":"f","s":3696},{"n":"AssetReferenceValidator.cs","t":"f","s":12008},{"n":"CheckDuplicateBundleDependenciesValidator.cs","t":"f","s":8073},{"n":"CheckResourcesToAddressableDuplicateDependenciesValidator.cs","t":"f","s":6107},{"n":"DisallowAddressableSubAssetFieldAttributeValidator.cs","t":"f","s":1375},{"n":"MissingAddressableGroupReferenceValidator.cs","t":"f","s":1860}]},{"n":"AddressablesInspectors.cs","t":"f","s":75484},{"n":"manifest.txt","t":"f","s":1203},{"n":"Sirenix.OdinInspector.Modules.Unity.Addressables.asmdef","t":"f","s":926}]},{"n":"Unity.Mathematics","t":"d","c":[{"n":"manifest.txt","t":"f","s":253},{"n":"MathematicsDrawers.cs","t":"f","s":44388},{"n":"Sirenix.OdinInspector.Modules.UnityMathematics.asmdef","t":"f","s":614}]},{"n":"Unity.Addressables.data","t":"f","s":118462},{"n":"Unity.Entities.data","t":"f","s":41801},{"n":"Unity.Localization.data","t":"f","s":309753},{"n":"Unity.Mathematics.data","t":"f","s":46862}]}]},{"n":"Readme.txt","t":"f","s":1403}]},{"n":"TextMesh Pro","t":"d","c":[{"n":"Documentation","t":"d","c":[{"n":"TextMesh Pro User Guide 2016.pdf","t":"f","s":694398}]},{"n":"Fonts","t":"d","c":[{"n":"Chinese.txt","t":"f","s":82},{"n":"font_LilitaOne-Regular SDF.asset","t":"f","s":2154549},{"n":"font_LilitaOne-Regular.ttf","t":"f","s":28092},{"n":"MiSans-Bold SDF.asset","t":"f","s":2119437},{"n":"MiSans-Bold.ttf","t":"f","s":7959920},{"n":"SourceHanSerifCN-Medium SDF.asset","t":"f","s":2202297},{"n":"SourceHanSerifCN-Medium.ttf","t":"f","s":14512860}]},{"n":"Resources","t":"d","c":[{"n":"Sprite Assets","t":"d","c":[{"n":"EmojiOne.asset","t":"f","s":13441}]},{"n":"Style Sheets","t":"d","c":[{"n":"Default Style Sheet.asset","t":"f","s":4953}]},{"n":"LineBreaking Following Characters.txt","t":"f","s":269},{"n":"LineBreaking Leading Characters.txt","t":"f","s":95},{"n":"TMP Settings.asset","t":"f","s":1714}]},{"n":"Shaders","t":"d","c":[{"n":"TMP_Bitmap-Custom-Atlas.shader","t":"f","s":3497},{"n":"TMP_Bitmap-Mobile.shader","t":"f","s":3549},{"n":"TMP_Bitmap.shader","t":"f","s":3499},{"n":"TMP_SDF Overlay.shader","t":"f","s":10585},{"n":"TMP_SDF SSD.shader","t":"f","s":12000},{"n":"TMP_SDF-Mobile Masking.shader","t":"f","s":7822},{"n":"TMP_SDF-Mobile Overlay.shader","t":"f","s":7643},{"n":"TMP_SDF-Mobile SSD.shader","t":"f","s":3071},{"n":"TMP_SDF-Mobile.shader","t":"f","s":7674},{"n":"TMP_SDF-Surface-Mobile.shader","t":"f","s":3524},{"n":"TMP_SDF-Surface.shader","t":"f","s":4355},{"n":"TMP_SDF.shader","t":"f","s":10600},{"n":"TMP_Sprite.shader","t":"f","s":2673},{"n":"TMPro.cginc","t":"f","s":2277},{"n":"TMPro_Mobile.cginc","t":"f","s":5311},{"n":"TMPro_Properties.cginc","t":"f","s":2843},{"n":"TMPro_Surface.cginc","t":"f","s":3563}]},{"n":"Sprites","t":"d","c":[{"n":"EmojiOne Attribution.txt","t":"f","s":187},{"n":"EmojiOne.json","t":"f","s":4122},{"n":"EmojiOne.png","t":"f","s":112319}]}]}]},{"n":"Res","t":"d","c":[{"n":"Config","t":"d","c":[{"n":"EditorPathConfig.asset","t":"f","s":724},{"n":"ResGroupRuleConfig.asset","t":"f","s":1118}]},{"n":"Dll","t":"d","c":[{"n":"Game.dll.bytes","t":"f","s":154112}]},{"n":"LubanData","t":"d","c":[{"n":"Bin","t":"d","c":[{"n":"tbentity.bytes","t":"f","s":378},{"n":"tbuipanel.bytes","t":"f","s":48}]},{"n":"Json","t":"d","c":[{"n":"tbentity.json","t":"f","s":1281},{"n":"tbuipanel.json","t":"f","s":343}]}]},{"n":"Scenes","t":"d","c":[{"n":"Battle.scene","t":"f","s":7390},{"n":"Launch.scene","t":"f","s":4850},{"n":"Main.scene","t":"f","s":7368}]},{"n":"UI","t":"d","c":[{"n":"BattlePanel","t":"d","c":[{"n":"BattlePanel.prefab","t":"f","s":2939}]},{"n":"LoadingPanel","t":"d","c":[{"n":"LoadingPanel.prefab","t":"f","s":2921}]},{"n":"MainPanel","t":"d","c":[{"n":"MainPanel.prefab","t":"f","s":39556}]}]}]},{"n":"Resources","t":"d","c":[{"n":"LaunchPanel","t":"d","c":[{"n":"LaunchPanel.prefab","t":"f","s":20856}]}]},{"n":"Scripts","t":"d","c":[{"n":"Framework","t":"d","c":[{"n":"Base","t":"d","c":[{"n":"ScriptTemplates","t":"d","c":[{"n":"CustomC#Script.txt","t":"f","s":319},{"n":"CustomLuaScript.txt","t":"f","s":233}]},{"n":"Singleton","t":"d","c":[{"n":"MonoSingleton.cs","t":"f","s":5816},{"n":"Singleton.cs","t":"f","s":2756}]},{"n":"AutoID.cs","t":"f","s":476},{"n":"Log.cs","t":"f","s":3516},{"n":"Variable.cs","t":"f","s":1065}]},{"n":"Editor","t":"d","c":[{"n":"CustomScript","t":"d","c":[{"n":"LuaCreator.cs","t":"f","s":2413},{"n":"ScriptCreator.cs","t":"f","s":3725}]},{"n":"FrameworkEditor.asmdef","t":"f","s":522},{"n":"LogJumpFixer.cs","t":"f","s":4640}]},{"n":"Module","t":"d","c":[{"n":"ClassPool","t":"d","c":[{"n":"ClassPool.cs","t":"f","s":5493},{"n":"ClassPoolMgr.cs","t":"f","s":5363},{"n":"IResetable.cs","t":"f","s":536}]},{"n":"Fsm","t":"d","c":[{"n":"Fsm.cs","t":"f","s":4223},{"n":"FsmState.cs","t":"f","s":759}]},{"n":"Mgr","t":"d","c":[{"n":"CoreMgr.cs","t":"f","s":1428},{"n":"EventMgr.cs","t":"f","s":4874},{"n":"ManagerBase.cs","t":"f","s":902},{"n":"TimerMgr.cs","t":"f","s":8986}]},{"n":"Network","t":"d","c":[{"n":"HttpMgr.cs","t":"f","s":3005},{"n":"NetMgr.cs","t":"f","s":4053}]},{"n":"ObjectPool","t":"d","c":[{"n":"ObjectPool.cs","t":"f","s":6662},{"n":"ObjectPoolMgr.cs","t":"f","s":3796}]},{"n":"Procedure","t":"d","c":[{"n":"ProcedureBase.cs","t":"f","s":410},{"n":"ProcedureMgr.cs","t":"f","s":2438}]},{"n":"Res","t":"d","c":[{"n":"AddressableLoader.cs","t":"f","s":7811},{"n":"IResLoader.cs","t":"f","s":1377},{"n":"ResMgr.cs","t":"f","s":1192}]},{"n":"Update","t":"d","c":[{"n":"CoroutineRunner.cs","t":"f","s":758},{"n":"IUpdateable.cs","t":"f","s":982},{"n":"UpdateMgr.cs","t":"f","s":4625}]}]},{"n":"Profiler","t":"d","c":[{"n":"GCProfiler.cs","t":"f","s":988},{"n":"TimeProfiler.cs","t":"f","s":3210}]},{"n":"Util","t":"d","c":[{"n":"FileUtil.cs","t":"f","s":4157},{"n":"ParseUtil.cs","t":"f","s":2821},{"n":"PlayerPrefsUtil.cs","t":"f","s":2508},{"n":"ShellUtil.cs","t":"f","s":1849}]},{"n":"Framework.asmdef","t":"f","s":543}]},{"n":"Game","t":"d","c":[{"n":"Base","t":"d","c":[{"n":"FrameAnim","t":"d","c":[{"n":"FrameAnimAsset.cs","t":"f","s":1800},{"n":"FrameAnimGpuMgr.cs","t":"f","s":4714},{"n":"FrameAnimGpuTest.cs","t":"f","s":30584},{"n":"FrameAnimGpuUtil.cs","t":"f","s":12027},{"n":"FrameAnimGpuView.cs","t":"f","s":8119},{"n":"FrameAnimMgr.cs","t":"f","s":4381},{"n":"FrameAnimPlayer.cs","t":"f","s":6533},{"n":"FrameAnimTest.cs","t":"f","s":6817},{"n":"FrameAnimView.cs","t":"f","s":3451},{"n":"PerfBaselineTest.cs","t":"f","s":11536}]},{"n":"AccountMgr.cs","t":"f","s":3015},{"n":"GameConfig.cs","t":"f","s":747},{"n":"GameEnum.cs","t":"f","s":1489},{"n":"GameLaunch.cs","t":"f","s":1378},{"n":"GameMgr.cs","t":"f","s":2086},{"n":"PlayerDataMgr.cs","t":"f","s":1875}]},{"n":"Battle","t":"d","c":[{"n":"SixLine","t":"d","c":[{"n":"SixLineLogic.cs","t":"f","s":43997},{"n":"SixLineView.cs","t":"f","s":21778},{"n":"SlEvents.cs","t":"f","s":1493},{"n":"SlKeyboardInput.cs","t":"f","s":1741},{"n":"SlLocalDriver.cs","t":"f","s":4495}]},{"n":"View","t":"d","c":[{"n":"EntityPool.cs","t":"f","s":3556},{"n":"ViewSync.cs","t":"f","s":5559}]},{"n":"BattleMgr.cs","t":"f","s":2434},{"n":"BattleView.cs","t":"f","s":708},{"n":"FixMath.cs","t":"f","s":6596},{"n":"GameJoystick.cs","t":"f","s":1033}]},{"n":"DataTable","t":"d","c":[{"n":"Gen","t":"d","c":[{"n":"DEntity.cs","t":"f","s":1130},{"n":"DPnlId.cs","t":"f","s":696},{"n":"DUIGroup.cs","t":"f","s":731},{"n":"DUIPanel.cs","t":"f","s":1706},{"n":"Tables.cs","t":"f","s":814},{"n":"TbEntity.cs","t":"f","s":1531},{"n":"TbUIPanel.cs","t":"f","s":1563}]},{"n":"DataTableMgr.cs","t":"f","s":2413}]},{"n":"Editor","t":"d","c":[{"n":"EditorPathConfig.cs","t":"f","s":1030},{"n":"Game.Editor.asmdef","t":"f","s":664},{"n":"ResGroupRuleConfig.cs","t":"f","s":5585},{"n":"ResGroupSyncer.cs","t":"f","s":26266},{"n":"ToolBox.Build.cs","t":"f","s":12535},{"n":"ToolBox.cs","t":"f","s":3582},{"n":"ToolBox.Excel.cs","t":"f","s":11809},{"n":"ToolBox.Stats.cs","t":"f","s":7383}]},{"n":"Net","t":"d","c":[{"n":"Proto","t":"d","c":[{"n":"NetApi.cs","t":"f","s":1063},{"n":"NetAuth.cs","t":"f","s":47090},{"n":"NetBattle.cs","t":"f","s":36192},{"n":"NetCommon.cs","t":"f","s":16700},{"n":"NetProfile.cs","t":"f","s":19359},{"n":"NetPush.cs","t":"f","s":21395},{"n":"NetRoom.cs","t":"f","s":104864}]},{"n":"ApiRegistry.cs","t":"f","s":2521},{"n":"FrameSyncMgr.cs","t":"f","s":6587},{"n":"HttpMsgHandler.cs","t":"f","s":4839},{"n":"NetMsgHandler.cs","t":"f","s":7519},{"n":"RoomMgr.cs","t":"f","s":10064}]},{"n":"Procedure","t":"d","c":[{"n":"ProcedureBattle.cs","t":"f","s":1332},{"n":"ProcedureChangeScene.cs","t":"f","s":1829},{"n":"ProcedureMain.cs","t":"f","s":926},{"n":"ProcedurePreload.cs","t":"f","s":1237},{"n":"ProcedureTest.cs","t":"f","s":466}]},{"n":"UI","t":"d","c":[{"n":"BattlePanel.cs","t":"f","s":9147},{"n":"LoadingPanel.cs","t":"f","s":331},{"n":"MainPanel.cs","t":"f","s":2975},{"n":"SafeArea.cs","t":"f","s":2725},{"n":"UIGroup.cs","t":"f","s":3191},{"n":"UIMgr.cs","t":"f","s":4921},{"n":"UIPanelBase.cs","t":"f","s":2074}]},{"n":"Game.asmdef","t":"f","s":881}]},{"n":"Launch","t":"d","c":[{"n":"Base","t":"d","c":[{"n":"AddressableHelper.cs","t":"f","s":8431},{"n":"GameCamera.cs","t":"f","s":1887},{"n":"LaunchConfig.cs","t":"f","s":1319},{"n":"LaunchEntry.cs","t":"f","s":934},{"n":"LaunchPanel.cs","t":"f","s":559}]},{"n":"Editor","t":"d","c":[{"n":"LaunchEditor.asmdef","t":"f","s":421},{"n":"PrefabHierarchyExporter.cs","t":"f","s":8598}]},{"n":"Joystick Pack","t":"d","c":[{"n":"Base","t":"d","c":[{"n":"Joystick.cs","t":"f","s":5069}]},{"n":"Joysticks","t":"d","c":[{"n":"DynamicJoystick.cs","t":"f","s":1314},{"n":"FixedJoystick.cs","t":"f","s":125},{"n":"FloatingJoystick.cs","t":"f","s":720}]}]},{"n":"Misc","t":"d","c":[{"n":"Empty4Raycast.cs","t":"f","s":662},{"n":"SlicedFilledImage.cs","t":"f","s":17444}]},{"n":"Procedure","t":"d","c":[{"n":"ProcedureLaunch.cs","t":"f","s":2898},{"n":"ProcedureLoadDll.cs","t":"f","s":3794},{"n":"ProcedureResCheckAA.cs","t":"f","s":2304},{"n":"ProcedureVersionCheck.cs","t":"f","s":1661}]},{"n":"Launch.asmdef","t":"f","s":735}]}]},{"n":"Settings","t":"d","c":[{"n":"Scenes","t":"d","c":[{"n":"URP2DSceneTemplate.scene","t":"f","s":9881}]},{"n":"Lit2DSceneTemplate.scenetemplate","t":"f","s":3942809},{"n":"Renderer2D.asset","t":"f","s":2803},{"n":"UniversalRenderPipelineGlobalSettings.asset","t":"f","s":732},{"n":"UniversalRP.asset","t":"f","s":4877}]},{"n":"WX-WASM-SDK-V2","t":"d","c":[{"n":"Editor","t":"d","c":[{"n":"MiniGameConfig.asset","t":"f","s":2501}]},{"n":"Runtime","t":"d","c":[{"n":"Plugins","t":"d","c":[{"n":"link.xml","t":"f","s":160}]},{"n":"wechat-default","t":"d","c":[{"n":"images","t":"d","c":[{"n":"background.jpg","t":"f","s":8917}]}]}]}]}]},{"n":"DataTables","t":"d","c":[{"n":"Datas","t":"d","c":[{"n":"#Entity.xlsx","t":"f","s":7531},{"n":"#UIPanel.xlsx","t":"f","s":9207},{"n":"__beans__.xlsx","t":"f","s":9737},{"n":"__enums__.xlsx","t":"f","s":9578},{"n":"__pnlenums__.xlsx","t":"f","s":9475},{"n":"__tables__.xlsx","t":"f","s":9384}]},{"n":"output","t":"d","c":[{"n":"demo_tbitem.json","t":"f","s":177}]},{"n":"gen.bat","t":"f","s":200},{"n":"gen.sh","t":"f","s":721},{"n":"gen_proto.sh","t":"f","s":2490},{"n":"luban.conf","t":"f","s":708}]},{"n":"Packages","t":"d","c":[{"n":"manifest.json","t":"f","s":2363},{"n":"packages-lock.json","t":"f","s":16260}]},{"n":"ProjectSettings","t":"d","c":[{"n":"AudioManager.asset","t":"f","s":413},{"n":"AutoStreamingSettings.asset","t":"f","s":457},{"n":"ClusterInputManager.asset","t":"f","s":114},{"n":"DynamicsManager.asset","t":"f","s":1254},{"n":"EditorBuildSettings.asset","t":"f","s":623},{"n":"EditorSettings.asset","t":"f","s":1278},{"n":"GraphicsSettings.asset","t":"f","s":2574},{"n":"HybridCLRSettings.asset","t":"f","s":1121},{"n":"InputManager.asset","t":"f","s":9731},{"n":"MemorySettings.asset","t":"f","s":1232},{"n":"NavMeshAreas.asset","t":"f","s":1308},{"n":"NetworkManager.asset","t":"f","s":151},{"n":"PackageManagerSettings.asset","t":"f","s":953},{"n":"Physics2DSettings.asset","t":"f","s":2028},{"n":"PresetManager.asset","t":"f","s":146},{"n":"ProjectSettings.asset","t":"f","s":30093},{"n":"ProjectVersion.txt","t":"f","s":118},{"n":"QualitySettings.asset","t":"f","s":6720},{"n":"SceneTemplateSettings.json","t":"f","s":3534},{"n":"ShaderGraphSettings.asset","t":"f","s":490},{"n":"TagManager.asset","t":"f","s":378},{"n":"TextureManagerSettings.asset","t":"f","s":470},{"n":"ThreadInfoSettings.asset","t":"f","s":1381},{"n":"TimeManager.asset","t":"f","s":202},{"n":"UnityConnectSettings.asset","t":"f","s":930},{"n":"URPProjectSettings.asset","t":"f","s":410},{"n":"VersionControlSettings.asset","t":"f","s":188},{"n":"VFXManager.asset","t":"f","s":308},{"n":"XRSettings.asset","t":"f","s":158}]},{"n":"Server","t":"d","c":[{"n":"wgame-server","t":"d","c":[{"n":"GameServer","t":"d","c":[{"n":"Handlers","t":"d","c":[{"n":"AuthHandler.cs","t":"f","s":1442},{"n":"BattleHandler.cs","t":"f","s":4857},{"n":"MatchHandler.cs","t":"f","s":2477},{"n":"RoomHandler.cs","t":"f","s":4972}]},{"n":"appsettings.json","t":"f","s":232},{"n":"GameServer.csproj","t":"f","s":1232},{"n":"JwtValidator.cs","t":"f","s":1429},{"n":"MatchMaker.cs","t":"f","s":3350},{"n":"MsgDispatcher.cs","t":"f","s":1205},{"n":"NetServer.cs","t":"f","s":2609},{"n":"ProfileStore.cs","t":"f","s":3904},{"n":"Program.cs","t":"f","s":4305},{"n":"Room.cs","t":"f","s":7949},{"n":"RoomMgr.cs","t":"f","s":2650},{"n":"SessionMgr.cs","t":"f","s":3939},{"n":"Settlement.cs","t":"f","s":2256}]},{"n":"LoginServer","t":"d","c":[{"n":"Data","t":"d","c":[{"n":"PlayerProfileRepository.cs","t":"f","s":1895},{"n":"PlayerRepository.cs","t":"f","s":1951}]},{"n":"Endpoints","t":"d","c":[{"n":"AuthEndpoints.cs","t":"f","s":3258},{"n":"PlayerEndpoints.cs","t":"f","s":1592}]},{"n":"Models","t":"d","c":[{"n":"AuthModels.cs","t":"f","s":281},{"n":"PlayerProfile.cs","t":"f","s":410}]},{"n":"Properties","t":"d","c":[{"n":"launchSettings.json","t":"f","s":994}]},{"n":"Services","t":"d","c":[{"n":"JwtService.cs","t":"f","s":1448},{"n":"PasswordService.cs","t":"f","s":384},{"n":"ProtoHttp.cs","t":"f","s":1080}]},{"n":"appsettings.Development.json","t":"f","s":119},{"n":"appsettings.json","t":"f","s":320},{"n":"login.db","t":"f","s":20480},{"n":"LoginServer.csproj","t":"f","s":1146},{"n":"Program.cs","t":"f","s":1915}]},{"n":"Proto","t":"d","c":[{"n":"net_auth.proto","t":"f","s":720},{"n":"net_battle.proto","t":"f","s":1248},{"n":"net_common.proto","t":"f","s":3291},{"n":"net_profile.proto","t":"f","s":529},{"n":"net_push.proto","t":"f","s":409},{"n":"net_room.proto","t":"f","s":3819},{"n":"NetApi.cs","t":"f","s":1063}]},{"n":"wgame-server.sln","t":"f","s":1269},{"n":"wgame-server.sln.DotSettings.user","t":"f","s":6656}]}]},{"n":"Tools","t":"d","c":[{"n":"Luban","t":"d","c":[{"n":"de","t":"d","c":[{"n":"Neo.Lua.resources.dll","t":"f","s":10752}]},{"n":"Templates","t":"d","c":[{"n":"common","t":"d","c":[{"n":"cpp","t":"d","c":[{"n":"enum.sbn","t":"f","s":558}]},{"n":"cs","t":"d","c":[{"n":"enum.sbn","t":"f","s":654}]},{"n":"dart","t":"d","c":[{"n":"enum.sbn","t":"f","s":713}]},{"n":"go","t":"d","c":[{"n":"enum.sbn","t":"f","s":386}]},{"n":"java","t":"d","c":[{"n":"enum.sbn","t":"f","s":442}]},{"n":"js","t":"d","c":[{"n":"enum.sbn","t":"f","s":2}]},{"n":"php","t":"d","c":[{"n":"enum.sbn","t":"f","s":2}]},{"n":"rs","t":"d","c":[{"n":"macros","t":"d","c":[{"n":"src","t":"d","c":[{"n":"lib.rs.sbn","t":"f","s":1790}]},{"n":"Cargo.toml.sbn","t":"f","s":254}]}]},{"n":"ts","t":"d","c":[{"n":"enum.sbn","t":"f","s":2}]}]},{"n":"cpp-rawptr-bin","t":"d","c":[{"n":"bean.sbn","t":"f","s":856},{"n":"schema_cpp.sbn","t":"f","s":1363},{"n":"schema_h.sbn","t":"f","s":382},{"n":"table.sbn","t":"f","s":4226},{"n":"tables.sbn","t":"f","s":550}]},{"n":"cpp-sharedptr-bin","t":"d","c":[{"n":"bean.sbn","t":"f","s":874},{"n":"schema_cpp.sbn","t":"f","s":1353},{"n":"schema_h.sbn","t":"f","s":382},{"n":"table.sbn","t":"f","s":4813},{"n":"tables.sbn","t":"f","s":550}]},{"n":"cs-bin","t":"d","c":[{"n":"bean.sbn","t":"f","s":5858},{"n":"table.sbn","t":"f","s":6777},{"n":"tables.sbn","t":"f","s":835}]},{"n":"cs-dotnet-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":5937},{"n":"table.sbn","t":"f","s":7030},{"n":"tables.sbn","t":"f","s":863}]},{"n":"cs-editor-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":3250},{"n":"enum.sbn","t":"f","s":1713}]},{"n":"cs-newtonsoft-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":6011},{"n":"table.sbn","t":"f","s":6922},{"n":"tables.sbn","t":"f","s":854}]},{"n":"cs-simple-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":5909},{"n":"table.sbn","t":"f","s":6924},{"n":"tables.sbn","t":"f","s":854}]},{"n":"cs_pb","t":"d","c":[{"n":"tables.sbn","t":"f","s":1029}]},{"n":"dart-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":5436},{"n":"table.sbn","t":"f","s":4701},{"n":"tables.sbn","t":"f","s":1226}]},{"n":"flatbuffers","t":"d","c":[{"n":"schema.sbn","t":"f","s":1302}]},{"n":"gdscript-json","t":"d","c":[{"n":"schema.sbn","t":"f","s":5145}]},{"n":"go-bin","t":"d","c":[{"n":"bean.sbn","t":"f","s":1543},{"n":"table.sbn","t":"f","s":3280},{"n":"tables.sbn","t":"f","s":764}]},{"n":"go-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":1574},{"n":"table.sbn","t":"f","s":3123},{"n":"tables.sbn","t":"f","s":665}]},{"n":"java-bin","t":"d","c":[{"n":"bean.sbn","t":"f","s":1979},{"n":"table.sbn","t":"f","s":3097},{"n":"tables.sbn","t":"f","s":981}]},{"n":"java-json","t":"d","c":[{"n":"bean.sbn","t":"f","s":2081},{"n":"table.sbn","t":"f","s":3236},{"n":"tables.sbn","t":"f","s":1009}]},{"n":"javascript-bin","t":"d","c":[{"n":"schema.sbn","t":"f","s":5156}]},{"n":"javascript-json","t":"d","c":[{"n":"schema.sbn","t":"f","s":5310}]},{"n":"lua-bin","t":"d","c":[{"n":"schema.sbn","t":"f","s":4897}]},{"n":"lua-lua","t":"d","c":[{"n":"schema.sbn","t":"f","s":1718}]},{"n":"pb","t":"d","c":[{"n":"schema.sbn","t":"f","s":976}]},{"n":"php-json","t":"d","c":[{"n":"schema.sbn","t":"f","s":4270}]},{"n":"python-json","t":"d","c":[{"n":"schema.sbn","t":"f","s":4753}]},{"n":"rust-bin","t":"d","c":[{"n":"lib.sbn","t":"f","s":1210},{"n":"mod.sbn","t":"f","s":9054},{"n":"toml.sbn","t":"f","s":310}]},{"n":"rust-json","t":"d","c":[{"n":"lib.sbn","t":"f","s":1221},{"n":"mod.sbn","t":"f","s":9538},{"n":"toml.sbn","t":"f","s":340}]},{"n":"typescript-bin","t":"d","c":[{"n":"schema.sbn","t":"f","s":7147}]},{"n":"typescript-json","t":"d","c":[{"n":"schema.sbn","t":"f","s":7014}]},{"n":"typescript-protobuf","t":"d","c":[{"n":"schema.sbn","t":"f","s":851}]}]},{"n":"CommandLine.dll","t":"f","s":225280},{"n":"ExcelDataReader.dll","t":"f","s":181760},{"n":"Google.Protobuf.dll","t":"f","s":485472},{"n":"Luban","t":"f","s":124576},{"n":"Luban.Bson.deps.json","t":"f","s":2985},{"n":"Luban.Bson.dll","t":"f","s":7680},{"n":"Luban.Bson.pdb","t":"f","s":12076},{"n":"Luban.Core.deps.json","t":"f","s":1433},{"n":"Luban.Core.dll","t":"f","s":242176},{"n":"Luban.Core.pdb","t":"f","s":112592},{"n":"Luban.Cpp.deps.json","t":"f","s":1791},{"n":"Luban.Cpp.dll","t":"f","s":25088},{"n":"Luban.Cpp.pdb","t":"f","s":16000},{"n":"Luban.CSharp.deps.json","t":"f","s":1876},{"n":"Luban.CSharp.dll","t":"f","s":56320},{"n":"Luban.CSharp.pdb","t":"f","s":24952},{"n":"Luban.Dart.deps.json","t":"f","s":1794},{"n":"Luban.Dart.dll","t":"f","s":17920},{"n":"Luban.Dart.pdb","t":"f","s":14956},{"n":"Luban.DataLoader.Builtin.deps.json","t":"f","s":20299},{"n":"Luban.DataLoader.Builtin.dll","t":"f","s":81920},{"n":"Luban.DataLoader.Builtin.pdb","t":"f","s":42612},{"n":"Luban.DataTarget.Builtin.deps.json","t":"f","s":20749},{"n":"Luban.DataTarget.Builtin.dll","t":"f","s":25088},{"n":"Luban.DataTarget.Builtin.pdb","t":"f","s":21968},{"n":"Luban.DataValidator.Builtin.deps.json","t":"f","s":1845},{"n":"Luban.DataValidator.Builtin.dll","t":"f","s":26112},{"n":"Luban.DataValidator.Builtin.pdb","t":"f","s":18196},{"n":"Luban.deps.json","t":"f","s":33616},{"n":"Luban.dll","t":"f","s":18432},{"n":"Luban.FlatBuffers.deps.json","t":"f","s":21178},{"n":"Luban.FlatBuffers.dll","t":"f","s":12800},{"n":"Luban.FlatBuffers.pdb","t":"f","s":14376},{"n":"Luban.Gdscript.deps.json","t":"f","s":21169},{"n":"Luban.Gdscript.dll","t":"f","s":10752},{"n":"Luban.Gdscript.pdb","t":"f","s":13300},{"n":"Luban.Golang.deps.json","t":"f","s":1800},{"n":"Luban.Golang.dll","t":"f","s":24576},{"n":"Luban.Golang.pdb","t":"f","s":15832},{"n":"Luban.Java.deps.json","t":"f","s":1794},{"n":"Luban.Java.dll","t":"f","s":19456},{"n":"Luban.Java.pdb","t":"f","s":14952},{"n":"Luban.Javascript.deps.json","t":"f","s":22039},{"n":"Luban.Javascript.dll","t":"f","s":15872},{"n":"Luban.Javascript.pdb","t":"f","s":14304},{"n":"Luban.L10N.deps.json","t":"f","s":20707},{"n":"Luban.L10N.dll","t":"f","s":12288},{"n":"Luban.L10N.pdb","t":"f","s":13724},{"n":"Luban.Lua.deps.json","t":"f","s":1791},{"n":"Luban.Lua.dll","t":"f","s":14848},{"n":"Luban.Lua.pdb","t":"f","s":14932},{"n":"Luban.MsgPack.deps.json","t":"f","s":3614},{"n":"Luban.MsgPack.dll","t":"f","s":8704},{"n":"Luban.MsgPack.pdb","t":"f","s":12804},{"n":"Luban.pdb","t":"f","s":15224},{"n":"Luban.PHP.deps.json","t":"f","s":21154},{"n":"Luban.PHP.dll","t":"f","s":11776},{"n":"Luban.PHP.pdb","t":"f","s":13076},{"n":"Luban.Protobuf.deps.json","t":"f","s":21723},{"n":"Luban.Protobuf.dll","t":"f","s":23040},{"n":"Luban.Protobuf.pdb","t":"f","s":18380},{"n":"Luban.Python.deps.json","t":"f","s":21163},{"n":"Luban.Python.dll","t":"f","s":13312},{"n":"Luban.Python.pdb","t":"f","s":13912},{"n":"Luban.runtimeconfig.json","t":"f","s":328},{"n":"Luban.Rust.deps.json","t":"f","s":1794},{"n":"Luban.Rust.dll","t":"f","s":25088},{"n":"Luban.Rust.pdb","t":"f","s":16156},{"n":"Luban.Schema.Builtin.deps.json","t":"f","s":20737},{"n":"Luban.Schema.Builtin.dll","t":"f","s":33792},{"n":"Luban.Schema.Builtin.pdb","t":"f","s":19652},{"n":"Luban.Schema.Builtin.runtimeconfig.json","t":"f","s":362},{"n":"Luban.Typescript.deps.json","t":"f","s":22039},{"n":"Luban.Typescript.dll","t":"f","s":18432},{"n":"Luban.Typescript.pdb","t":"f","s":15240},{"n":"MessagePack.Annotations.dll","t":"f","s":11776},{"n":"MessagePack.dll","t":"f","s":330752},{"n":"Microsoft.NET.StringTools.dll","t":"f","s":30856},{"n":"Neo.Lua.dll","t":"f","s":321024},{"n":"Newtonsoft.Json.Bson.dll","t":"f","s":101592},{"n":"Newtonsoft.Json.dll","t":"f","s":695336},{"n":"NLog.dll","t":"f","s":953344},{"n":"nlog.xml","t":"f","s":951},{"n":"Scriban.dll","t":"f","s":449536},{"n":"Ude.NetStandard.dll","t":"f","s":164864},{"n":"YamlDotNet.NetCore.dll","t":"f","s":172032}]},{"n":"gen_workspace_tree.py","t":"f","s":10803}]},{"n":"UserSettings","t":"d","c":[{"n":"Layouts","t":"d","c":[{"n":"default-2022.dwlt","t":"f","s":36466}]},{"n":"EditorUserSettings.asset","t":"f","s":1098},{"n":"Search.index","t":"f","s":277},{"n":"Search.settings","t":"f","s":1267}]},{"n":"文档","t":"d","c":[{"n":"开发记录","t":"d","c":[{"n":"六连珠对战玩法开发任务清单.md","t":"f","s":18976},{"n":"吸血鬼幸存者玩法开发任务清单.md","t":"f","s":32210},{"n":"客户端项目架构梳理.md","t":"f","s":30291},{"n":"服务器开发流程.md","t":"f","s":11650},{"n":"配置表Luban读写流程.md","t":"f","s":3351}]},{"n":"知识整理","t":"d","c":[{"n":"C#委托与闭包内存分配分析.md","t":"f","s":6373},{"n":"MSAA与FXAA原理及优劣对比分析.md","t":"f","s":10638},{"n":"Shader变体裁剪与宏原理分析.md","t":"f","s":8000},{"n":"序列帧渲染方案性能基线对比与定案.md","t":"f","s":15097}]},{"n":"统计输出","t":"d","c":[{"n":"AssetBundle统计数据 2026-09-10_14-57-44.csv","t":"f","s":761},{"n":"AssetBundle统计数据 2026-09-12_19-03-20.csv","t":"f","s":940},{"n":"对象池统计数据 2026-09-10_14-57-30.csv","t":"f","s":374},{"n":"对象池统计数据 2026-09-12_19-03-13.csv","t":"f","s":1018},{"n":"类池统计数据 2026-09-10_14-57-33.csv","t":"f","s":362},{"n":"类池统计数据 2026-09-12_19-03-17.csv","t":"f","s":414}]},{"n":"规范","t":"d","c":[{"n":"团队C#_Unity编码命名规范.md","t":"f","s":7385},{"n":"项目设计规范.md","t":"f","s":2683}]},{"n":"工作区目录.html","t":"f","s":41359}]},{"n":".gitignore","t":"f","s":1031},{"n":"AGENTS.md","t":"f","s":6168},{"n":"Assembly-CSharp-Editor-firstpass.csproj","t":"f","s":80907},{"n":"Assembly-CSharp-firstpass.csproj","t":"f","s":6213},{"n":"Assembly-CSharp.csproj","t":"f","s":3402},{"n":"ChainSix.sln","t":"f","s":4210},{"n":"Cinemachine.csproj","t":"f","s":64749},{"n":"CinemachineEditor.csproj","t":"f","s":68220},{"n":"Coffee.UIParticle.csproj","t":"f","s":62326},{"n":"Coffee.UIParticle.Editor.csproj","t":"f","s":59691},{"n":"DOTween.Modules.csproj","t":"f","s":62176},{"n":"Framework.csproj","t":"f","s":64512},{"n":"FrameworkEditor.csproj","t":"f","s":65837},{"n":"Game.csproj","t":"f","s":67318},{"n":"Game.Editor.csproj","t":"f","s":66559},{"n":"Google.Protobuf.csproj","t":"f","s":48567},{"n":"Launch.csproj","t":"f","s":63904},{"n":"LaunchEditor.csproj","t":"f","s":65316},{"n":"LiteNetLib.csproj","t":"f","s":64769},{"n":"README.md","t":"f","s":3133},{"n":"Sirenix.OdinInspector.Modules.Unity.Addressables.csproj","t":"f","s":63275},{"n":"Sirenix.OdinInspector.Modules.UnityMathematics.csproj","t":"f","s":65582},{"n":"spine-csharp.csproj","t":"f","s":64167},{"n":"spine-unity-editor.csproj","t":"f","s":69644},{"n":"spine-unity.csproj","t":"f","s":73524}]};
+
+const ICON = {
+  cs:'C#', js:'JS', ts:'TS', py:'PY', json:'{}', xlsx:'XL', xls:'XL', csv:'CS',
+  md:'MD', txt:'TX', sh:'SH', bat:'BA', conf:'CF', proto:'PR', asset:'AS',
+  unity:'SC', prefab:'PF', png:'IM', jpg:'IM', psd:'PS', tga:'IM', mat:'MT',
+  dll:'DL', so:'SO', sln:'SL', csproj:'PJ', yml:'YM', yaml:'YM', xml:'XM'
+};
+const COLOR = {
+  cs:'#8ec07c', js:'#e6c07b', ts:'#6fa8dc', py:'#7fb3d5', json:'#c8b06a',
+  xlsx:'#79b877', csv:'#79b877', md:'#b9a6d8', sh:'#9aa7b8', proto:'#d99b6a',
+  png:'#c58fd0', jpg:'#c58fd0', prefab:'#6fb1c9', unity:'#6fb1c9', dll:'#8a93a0'
+};
+
+const treeEl = document.getElementById('tree');
+const qEl = document.getElementById('q');
+const openSet = new Set(['ChainSix']);
+DATA.c.forEach(c => { if (c.t === 'd') openSet.add('ChainSix/' + c.n); });
+
+function ext(n){ const i = n.lastIndexOf('.'); return i > 0 ? n.slice(i+1).toLowerCase() : ''; }
+function size(b){
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(b < 10240 ? 1 : 0) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+function countFiles(node){
+  if (node.t === 'f') return 1;
+  let s = 0;
+  for (const c of node.c) s += countFiles(c);
+  return s;
+}
+function hit(node, q){
+  if (!q) return true;
+  if (node.n.toLowerCase().includes(q)) return true;
+  if (node.t === 'd') return node.c.some(c => hit(c, q));
+  return false;
+}
+
+function render(node, path, depth, q){
+  const frag = document.createDocumentFragment();
+  for (const child of node.c) {
+    if (!hit(child, q)) continue;
+    const p = path + '/' + child.n;
+    const isDir = child.t === 'd';
+    const row = document.createElement('div');
+    row.className = 'row ' + (isDir ? 'dir' : 'file');
+    row.style.paddingLeft = (depth * 11 + 2) + 'px';
+
+    const chev = document.createElement('span');
+    chev.className = 'chev' + (isDir ? (openSet.has(p) || q ? ' open' : '') : ' hide');
+    chev.textContent = '\u25B6';
+    row.appendChild(chev);
+
+    const ic = document.createElement('span');
+    ic.className = 'ic';
+    if (isDir) { ic.textContent = '\u25C6'; ic.style.color = 'var(--folder)'; }
+    else {
+      const e = ext(child.n);
+      ic.textContent = ICON[e] || '\u00B7';
+      ic.style.color = COLOR[e] || '#6d7683';
+    }
+    row.appendChild(ic);
+
+    const nm = document.createElement('span');
+    nm.className = 'name';
+    nm.textContent = child.n;
+    row.appendChild(nm);
+
+    const cnt = document.createElement('span');
+    cnt.className = 'cnt';
+    cnt.textContent = isDir ? countFiles(child) : size(child.s || 0);
+    row.appendChild(cnt);
+
+    frag.appendChild(row);
+
+    if (isDir) {
+      const kids = document.createElement('div');
+      kids.className = 'kids' + (openSet.has(p) || q ? '' : ' hide');
+      kids.appendChild(render(child, p, depth + 1, q));
+      frag.appendChild(kids);
+      row.addEventListener('click', () => {
+        const on = openSet.has(p);
+        if (on) openSet.delete(p); else openSet.add(p);
+        chev.classList.toggle('open', !on);
+        kids.classList.toggle('hide', on);
+      });
+    } else {
+      row.addEventListener('click', () => {
+        const full = p.replace(/^ChainSix/, '/Users/wangshaowen/ChainSix');
+        navigator.clipboard.writeText(full).then(
+          () => toast('已复制 ' + full),
+          () => toast(full)
+        );
+      });
+    }
+  }
+  return frag;
+}
+
+let toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 1600);
+}
+
+function draw(){
+  const q = qEl.value.trim().toLowerCase();
+  treeEl.innerHTML = '';
+  const out = render(DATA, 'ChainSix', 0, q);
+  if (!out.childNodes.length) {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.textContent = '没有匹配的文件';
+    treeEl.appendChild(d);
+  } else {
+    treeEl.appendChild(out);
+  }
+}
+
+qEl.addEventListener('input', draw);
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); }
+  if (e.key === 'Escape') { qEl.value = ''; qEl.blur(); draw(); }
+});
+draw();
+</script>
+</body>
+</html>
