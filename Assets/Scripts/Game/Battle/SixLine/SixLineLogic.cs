@@ -12,55 +12,66 @@ using System.Collections.Generic;
 /// 六连珠确定性逻辑层（纯 C#，无 UnityEngine）。帧同步纪律：禁 float/double、System.Random、
 /// Time.*、Dictionary 遍历、Tick 内分配；同帧号 + 同操作序列 => 任意端状态一致。
 /// partial 拆分：本文件 = 常量/状态/Tick/输入/StateHash；Board = 几何与数据；
-/// Group = 三角组状态机；Settle = 物理沉降；Match = 消除与连锁。
+/// Group = 三角组状态机；Settle = 物理沉降；Match = 消除与连锁；Presentation = 确定性轨迹。
 /// </summary>
 public partial class SixLineLogic
 {
-    // ---- 规则常量（1-8 迁入 Luban 调参表）----
-    public const int LogicFrameMs = 50;      // 与 FrameSyncMgr.LogicFrameMs 一致
-
-    public const int Rows = 12;              // row 0 = 底部
-    public const int DangerRows = 2;         // 顶部危险区行数
+    public const int LogicFrameMs = 50;
     public const int PlayerCount = 2;
-    public const int PreviewCount = 3;
+    public const int PreviewCount = 1;
     public const int EmptyColor = 0;
     public const int ColorMin = 1;
-    public const int ColorMax = 5;           // 颜色数 = 难度总开关
-    public const int SlotCount = 9;          // 横向相位数（奇行锚点列 0..8）
-    public const int ClearCount = 6;
-    public const int MaxSettleRounds = 20;   // 结算轮数防御上限
-    public const int GraceFrames = 10;       // 可沉降容错窗口（0.5s @ 50ms）
+    public const int MaxSettleRounds = 128;
 
-    public static readonly Fix MoveSpeed = Fix.FromDouble(0.25);      // 横移 0.25 列/帧
-    public static readonly Fix SlowFallSpeed = Fix.FromDouble(0.08);  // 0.08 格/帧
-    public static readonly Fix FastFallSpeed = Fix.FromInt(1);        // 1 格/帧
-    private static readonly Fix BallTouch = Fix.FromDouble(0.96);     // 球直径：中心距 < 此值即重叠
+    public cfg.DSixLineRule Rules { get; }
+    public int Rows => Rules.Rows;
+    public int Columns => Rules.Columns;
+    public int DangerRows => Rules.DangerRows;
+    public int ColorMax => Rules.ColorCount;
+    public int SlotCount => Columns - 1;
+    public int ClearCount => Rules.ClearCount;
+    public int GraceFrames => Rules.GraceFrames;
+    public int TotalCells => RowStart(Rows);
+    public Fix MoveSpeed { get; }
+    public Fix SlowFallSpeed { get; }
+    public Fix FastFallSpeed { get; }
+    private static readonly Fix BallTouch = Fix.FromDouble(0.96);
     private static readonly Fix BallTouchSq = BallTouch * BallTouch;
 
     // ---- 对局状态 ----
 
     public readonly List<Player> Players = new List<Player>(PlayerCount);
 
-    /// <summary>双方共享出子序列：第 N 组一致，懒生成，追加顺序随消费顺序确定</summary>
-    public readonly List<int> SharedSeq = new List<int>(64);
-
     public bool GameOver { get; private set; }
     public int LastTickFrame { get; private set; }
+    /// <summary>未结束或平局为 -1，由 GameOver 区分</summary>
+    public int WinnerIndex { get; private set; } = -1;
 
     /// <summary>最近一次被拒原因（诊断用，不进 StateHash）</summary>
     public RejectReason LastReject { get; private set; }
 
     private readonly XRng _rng;
-    private readonly byte[] _elim = new byte[TotalCells];      // 消除标记（扫描复用）
-    private readonly byte[] _visited = new byte[TotalCells];   // flood fill 访问标记
-    private readonly int[] _stack = new int[TotalCells];
-    private readonly int[] _cluster = new int[TotalCells];
-    private readonly int[] _rowOf = new int[TotalCells];       // 扁平下标 -> 行
-    private readonly int[] _colOf = new int[TotalCells];       // 扁平下标 -> 列
+    private readonly byte[] _elim;
+    private readonly byte[] _visited;
+    private readonly int[] _stack;
+    private readonly int[] _cluster;
+    private readonly int[] _rowOf;
+    private readonly int[] _colOf;
 
-    public SixLineLogic(long seed)
+    public SixLineLogic(long seed, cfg.DSixLineRule rules)
     {
-        _rng = new XRng((ulong)seed);
+        ValidateRules(rules);
+        Rules = rules;
+        MoveSpeed = Fix.FromInt(rules.MoveSpeedMilli) / Fix.FromInt(1000);
+        SlowFallSpeed = Fix.FromInt(rules.SlowFallSpeedMilli) / Fix.FromInt(1000);
+        FastFallSpeed = Fix.FromInt(rules.FastFallSpeedMilli) / Fix.FromInt(1000);
+        _rng = new XRng((ulong)seed ^ 0xD1B54A32D192ED03UL);
+        _elim = new byte[TotalCells];
+        _visited = new byte[TotalCells];
+        _stack = new int[TotalCells];
+        _cluster = new int[TotalCells];
+        _rowOf = new int[TotalCells];
+        _colOf = new int[TotalCells];
 
         for (int r = 0; r < Rows; r++)
             for (int c = 0; c < RowCells(r); c++)
@@ -72,7 +83,10 @@ public partial class SixLineLogic
 
         for (int i = 0; i < PlayerCount; i++)
         {
-            var p = new Player { PlayerIndex = i };
+            // 两个同种子流代表同一条出子序列，各自只保存预览，避免长局缓存扩容。
+            var p = new Player(TotalCells, Columns, (ulong)seed) { PlayerIndex = i };
+            for (int c = 0; c < p.PreviewColors.Length; c++)
+                p.PreviewColors[c] = p.PieceRng.NextInt(ColorMin, ColorMax + 1);
             DrawNext(p);
             Players.Add(p);
         }
@@ -80,12 +94,22 @@ public partial class SixLineLogic
 
     /// <summary>
     /// 推进一逻辑帧。步骤顺序即确定性本身，禁止调整：
-    /// 1 应用输入 -> 2 三角组步进（含结算）-> 3 垃圾子投放(1-4) -> 4 胜负判定(1-5)
+    /// 1 应用输入 -> 2 双方落子结算 -> 3 汇总攻击并投放 -> 4 同帧胜负 -> 5 记录固定结算窗口，窗口结束后出下一组
     /// </summary>
     public void Tick(int absFrame, IList<SlInput> inputs)
     {
         if (GameOver) return;
         LastTickFrame = absFrame;
+        LastReject = RejectReason.None;
+        for (int i = 0; i < Players.Count; i++)
+        {
+            var p = Players[i];
+            p.LockedThisFrame = false;
+            p.LastSettleChain = p.LastSettleClusters = p.RoundCount = 0;
+            p.SentThisFrame = p.ReceivedThisFrame = 0;
+            if (p.Tri.State == PieceState.None && absFrame >= p.ResolveUntilFrame)
+                DrawNext(p);
+        }
 
         if (inputs != null)
             for (int i = 0; i < inputs.Count; i++)
@@ -99,8 +123,11 @@ public partial class SixLineLogic
             Players[i].FastDropHeld = false;
         }
 
-        // TODO(1-4) 3. 垃圾子投放
-        // TODO(1-5) 4. 胜负判定
+        ResolveGarbage();
+        CheckGameOver();
+        for (int i = 0; i < Players.Count; i++)
+            if (Players[i].LockedThisFrame)
+                Players[i].ResolveUntilFrame = absFrame + Players[i].VisualEndFrame + 2;
     }
 
     private void ApplyInput(SlInput input)
@@ -112,6 +139,8 @@ public partial class SixLineLogic
         }
 
         var p = Players[input.PlayerIndex];
+        if (p.Tri.State == PieceState.None)
+            return;
         switch (input.OpType)
         {
             case SlOp.MoveLeft:
@@ -134,16 +163,12 @@ public partial class SixLineLogic
         }
     }
 
-    /// <summary>FNV-1a 64。新字段只允许追加到方法尾部，禁止重排已有混合顺序</summary>
+    /// <summary>FNV-1a 64，覆盖规则、随机流、待投垃圾及预览；新增字段在尾部追加</summary>
     public ulong StateHash()
     {
         var h = 14695981039346656037UL;
         Mix(ref h, LastTickFrame);
         Mix(ref h, GameOver ? 1L : 0L);
-
-        Mix(ref h, SharedSeq.Count);
-        for (int i = 0; i < SharedSeq.Count; i++)
-            Mix(ref h, SharedSeq[i]);
 
         for (int i = 0; i < Players.Count; i++)
         {
@@ -162,8 +187,72 @@ public partial class SixLineLogic
             Mix(ref h, p.RestEndFrame);
         }
 
-        // TODO(1-3 起) 消除/连锁/垃圾子状态按固定序追加
+        Mix(ref h, WinnerIndex);
+        Mix(ref h, unchecked((long)_rng.State));
+        Mix(ref h, Rules.Id);
+        Mix(ref h, Rows);
+        Mix(ref h, Columns);
+        Mix(ref h, DangerRows);
+        Mix(ref h, ColorMax);
+        Mix(ref h, ClearCount);
+        Mix(ref h, GraceFrames);
+        Mix(ref h, MoveSpeed.Raw);
+        Mix(ref h, SlowFallSpeed.Raw);
+        Mix(ref h, FastFallSpeed.Raw);
+        Mix(ref h, Rules.SingleGarbage);
+        Mix(ref h, Rules.DoubleGarbage);
+        Mix(ref h, Rules.ChainGarbage);
+        for (int i = 0; i < Players.Count; i++)
+        {
+            var p = Players[i];
+            Mix(ref h, unchecked((long)p.PieceRng.State));
+            for (int c = 0; c < p.PreviewColors.Length; c++)
+                Mix(ref h, p.PreviewColors[c]);
+            Mix(ref h, p.PendingGarbage);
+            Mix(ref h, p.Overflow ? 1 : 0);
+            Mix(ref h, p.Lost ? 1 : 0);
+            Mix(ref h, p.LockedThisFrame ? 1 : 0);
+            Mix(ref h, p.LastSettleChain);
+            Mix(ref h, p.LastSettleClusters);
+            Mix(ref h, p.SentThisFrame);
+            Mix(ref h, p.ReceivedThisFrame);
+            Mix(ref h, p.TotalSent);
+            Mix(ref h, p.TotalReceived);
+            Mix(ref h, p.RoundCount);
+            for (int r = 0; r < p.RoundCount; r++)
+            {
+                Mix(ref h, p.RoundClusters[r]);
+                Mix(ref h, p.RoundCells[r]);
+                Mix(ref h, p.RoundSpecial[r]);
+                Mix(ref h, p.RoundPatterns[r]);
+            }
+        }
+        Mix(ref h, RowPitch.Raw);
+        for (int i = 0; i < Players.Count; i++)
+        {
+            var p = Players[i];
+            Mix(ref h, p.ResolveUntilFrame);
+            Mix(ref h, p.NextPieceId);
+            Mix(ref h, p.Tri.RotationTurns);
+            for (int c = 0; c < TotalCells; c++)
+                Mix(ref h, p.Board.PieceIds[c]);
+            for (int c = 0; c < 3; c++)
+                Mix(ref h, p.Tri.PieceIds[c]);
+        }
         return h;
+    }
+
+    private static void ValidateRules(cfg.DSixLineRule rules)
+    {
+        if (rules == null || rules.Rows < 6 || rules.Rows > 32 || rules.Columns < 6 || rules.Columns > 20
+            || rules.DangerRows < 1 || rules.DangerRows >= rules.Rows - 2
+            || rules.ColorCount < 2 || rules.ColorCount > 5 || rules.ClearCount < 5 || rules.ClearCount > 6
+            || rules.GraceFrames < 0 || rules.MoveSpeedMilli < 1 || rules.MoveSpeedMilli > 1000
+            || rules.SlowFallSpeedMilli < 1 || rules.SlowFallSpeedMilli > 1000
+            || rules.FastFallSpeedMilli < rules.SlowFallSpeedMilli || rules.FastFallSpeedMilli > 1000
+            || rules.SingleGarbage < 0 || rules.DoubleGarbage < rules.SingleGarbage || rules.ChainGarbage < 0
+            || rules.DoubleGarbage > 1000 || rules.ChainGarbage > 1000)
+            throw new System.ArgumentException("六连珠规则配置超出灰盒支持范围", nameof(rules));
     }
 
     private static void Mix(ref ulong h, long v)

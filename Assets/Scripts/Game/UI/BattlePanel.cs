@@ -22,6 +22,8 @@ public class BattlePanel : UIPanelBase
 {
     [SerializeField] private TMP_FontAsset _font; // MiSans-Bold SDF（prefab 上拖引用，对齐 LevelUpPanel）
 
+    private SixLineHud _sixLineHud;
+
     // ---- VS HUD 元素（EnsureHud 一次构建，面板池化常驻；TD 模式不构建）----
     private RectTransform _hudRoot;    // VSHud 根（跨模式切换时显隐，防 TD 模式残留 VS HUD）
     private RectTransform _hpFill; // 血条前景（锚点宽度 = 血量比例，零 sprite 依赖）
@@ -39,7 +41,14 @@ public class BattlePanel : UIPanelBase
     {
         base.OnOpen(userData);
 
-        GameMgr.Battle.RegisterJoystick(GetComponentInChildren<GameJoystick>());
+        var joystick = GetComponentInChildren<GameJoystick>(true);
+        var sixLine = GameMgr.Battle.CurrentBattleView as SixLineView;
+        if (joystick != null)
+            joystick.gameObject.SetActive(sixLine == null);
+        if (sixLine != null)
+            sixLine.AttachHud(this);
+        else
+            GameMgr.Battle.RegisterJoystick(joystick);
         // if (GameMgr.Battle.CurrentBattleView is VampireView)
         //     EnsureHud();
         // else if (_hudRoot != null) // TD 模式：隐藏 VS HUD（面板池化复用，节点常驻）
@@ -48,8 +57,23 @@ public class BattlePanel : UIPanelBase
 
     public override void OnRecycle()
     {
+        _sixLineHud?.Dispose();
+        _sixLineHud = null;
         GameMgr.Battle.ClearJoystick();
         base.OnRecycle();
+    }
+
+    public SixLineHud CreateSixLineHud(SlTouchInput[] inputs, System.Action restart, System.Action exit)
+    {
+        _sixLineHud?.Dispose();
+        if (_hudRoot != null)
+            _hudRoot.gameObject.SetActive(false);
+        var joystick = GetComponentInChildren<GameJoystick>(true);
+        if (joystick != null)
+            joystick.gameObject.SetActive(false);
+        GameMgr.Battle.ClearJoystick();
+        _sixLineHud = new SixLineHud(transform, _font, inputs, restart, exit);
+        return _sixLineHud;
     }
 
     /// <summary>

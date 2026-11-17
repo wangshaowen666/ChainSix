@@ -13,11 +13,13 @@ namespace cfg
 {
 public partial class Tables
 {
+    public TbSixLineRule TbSixLineRule {get; }
     public TbUIPanel TbUIPanel {get; }
     public TbEntity TbEntity {get; }
 
     public Tables(System.Func<string, ByteBuf> loader)
     {
+        TbSixLineRule = new TbSixLineRule(loader("tbsixlinerule"));
         TbUIPanel = new TbUIPanel(loader("tbuipanel"));
         TbEntity = new TbEntity(loader("tbentity"));
         ResolveRef();
@@ -25,6 +27,7 @@ public partial class Tables
     
     private void ResolveRef()
     {
+        TbSixLineRule.ResolveRef(this);
         TbUIPanel.ResolveRef(this);
         TbEntity.ResolveRef(this);
     }

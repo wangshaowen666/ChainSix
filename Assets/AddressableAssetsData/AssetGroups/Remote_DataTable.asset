@@ -17,6 +17,12 @@ MonoBehaviour:
     m_SerializedData: []
   m_GUID: aee6748bdaf0f45689b38b17ebd9ef53
   m_SerializeEntries:
+  - m_GUID: 9fb9649949519468597da1aef9492f34
+    m_Address: tbsixlinerule
+    m_ReadOnly: 0
+    m_SerializedLabels:
+    - datatable
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: d240543ca36204f6d96e729e81c94e1f
     m_Address: tbentity
     m_ReadOnly: 0

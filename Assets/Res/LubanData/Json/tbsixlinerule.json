@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "rows": 12,
+    "columns": 10,
+    "dangerRows": 2,
+    "colorCount": 5,
+    "clearCount": 6,
+    "graceFrames": 10,
+    "moveSpeedMilli": 250,
+    "slowFallSpeedMilli": 80,
+    "fastFallSpeedMilli": 1000,
+    "singleGarbage": 3,
+    "doubleGarbage": 5,
+    "chainGarbage": 2
+  }
+]

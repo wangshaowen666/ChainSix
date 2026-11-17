@@ -15,15 +15,16 @@ public partial class SixLineLogic
     /// <summary>消除与连锁：扫描标记 -> 消除 -> 沉降 -> 复扫，每轮连锁 +1</summary>
     private void SettleChains(Player p)
     {
+        EnsurePieceIds(p);
         p.LastSettleChain = 0;
         p.LastSettleClusters = 0;
         p.RoundCount = 0;
 
         while (p.RoundCount < MaxSettleRounds)
         {
-            var special = ScanSpecial(p);
+            var special = ScanSpecial(p, out var patterns);
             var clusters = ScanClusters(p);
-            var cells = ApplyElim(p);
+            var cells = ApplyElim(p, special);
             if (cells == 0)
                 break;
 
@@ -34,6 +35,7 @@ public partial class SixLineLogic
             p.RoundClusters[p.RoundCount] = clusters;
             p.RoundCells[p.RoundCount] = cells;
             p.RoundSpecial[p.RoundCount] = special;
+            p.RoundPatterns[p.RoundCount] = patterns;
             p.RoundCount++;
         }
     }
@@ -42,9 +44,10 @@ public partial class SixLineLogic
     /// 特殊图形检测，命中色的格子标记进 _elim，返回命中色 bitmask（bit = 颜色 id-1）：
     /// 1-3 横/右斜/左斜直线 >=6；4-5 上1中2下3 / 上3中2下1 金字塔；6 六球环。
     /// </summary>
-    private int ScanSpecial(Player p)
+    private int ScanSpecial(Player p, out int patterns)
     {
         var mask = 0;
+        patterns = 0;
         var cells = p.Board.Cells;
 
         // ---- 直线三轴 ----
@@ -80,7 +83,10 @@ public partial class SixLineLogic
                     }
 
                     if (count >= ClearCount)
+                    {
                         mask |= 1 << (color - 1);
+                        patterns++;
+                    }
                 }
             }
         }
@@ -101,11 +107,17 @@ public partial class SixLineLogic
 
                 // 上1中2下3：中 2 在 rr+1、单在 rr+2
                 if (rr + 2 < Rows && Match2(cells, rr + 1, m0, x) && CellAt(cells, rr + 2, s) == x)
+                {
                     mask |= 1 << (x - 1);
+                    patterns++;
+                }
 
                 // 上3中2下1：中 2 在 rr-1、单在 rr-2
                 if (rr - 2 >= 0 && Match2(cells, rr - 1, m0, x) && CellAt(cells, rr - 2, s) == x)
+                {
                     mask |= 1 << (x - 1);
+                    patterns++;
+                }
             }
         }
 
@@ -127,6 +139,7 @@ public partial class SixLineLogic
                     if (CellAt(cells, r - 2, c) != x || CellAt(cells, r - 2, c + 1) != x)
                         continue;
                     mask |= 1 << (x - 1);
+                    patterns++;
                 }
             }
             else
@@ -144,6 +157,7 @@ public partial class SixLineLogic
                     if (CellAt(cells, r - 2, c) != x || CellAt(cells, r - 2, c + 1) != x)
                         continue;
                     mask |= 1 << (x - 1);
+                    patterns++;
                 }
             }
         }
@@ -161,14 +175,14 @@ public partial class SixLineLogic
         return mask;
     }
 
-    private static bool Match2(int[] cells, int row, int col, int color)
+    private bool Match2(int[] cells, int row, int col, int color)
     {
         return col + 1 < RowCells(row)
             && cells[RowStart(row) + col] == color
             && cells[RowStart(row) + col + 1] == color;
     }
 
-    private static int CellAt(int[] cells, int row, int col)
+    private int CellAt(int[] cells, int row, int col)
     {
         return col < 0 || col >= RowCells(row) ? -1 : cells[RowStart(row) + col];
     }
@@ -221,15 +235,23 @@ public partial class SixLineLogic
     }
 
     /// <summary>清空标记格并复位标记，返回消除格数</summary>
-    private int ApplyElim(Player p)
+    private int ApplyElim(Player p, int special)
     {
         var cleared = 0;
         var cells = p.Board.Cells;
+        var start = p.VisualEndFrame;
         for (int i = 0; i < TotalCells; i++)
         {
             if (_elim[i] == 0)
                 continue;
+            var row = _rowOf[i];
+            var col = _colOf[i];
+            var color = cells[i];
+            RecordVisual(p, SlVisualKind.Clear, p.Board.PieceIds[i], color, CellCenterX(row, col), CellY(row),
+                CellCenterX(row, col), CellY(row), start, ClearFrames,
+                chain: p.RoundCount + 1, special: special != 0);
             cells[i] = EmptyColor;
+            p.Board.PieceIds[i] = 0;
             _elim[i] = 0;
             cleared++;
         }

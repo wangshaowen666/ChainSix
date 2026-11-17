@@ -114,6 +114,8 @@ public class XRng
 {
     private ulong _state;
 
+    public ulong State => _state;
+
     public XRng(ulong seed)
     {
         _state = seed;

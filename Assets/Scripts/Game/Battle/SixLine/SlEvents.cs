@@ -26,3 +26,31 @@ public static class SlOp
     public const int RotateCCW = 4;  // 点按：60° 逆时针
     public const int FastDrop = 5;   // 长按
 }
+
+public enum SlVisualKind : byte
+{
+    Place,
+    Fall,
+    Roll,
+    Land,
+    Clear,
+}
+
+/// <summary>一次结算内的确定性轨迹，坐标为球直径单位；表现层按帧时间播放。</summary>
+public struct SlVisualEvent
+{
+    public SlVisualKind Kind;
+    public int PieceId;
+    public int Color;
+    public int StartFrame;
+    public int DurationFrames;
+    public int Chain;
+    public bool Special;
+    public Fix FromX;
+    public Fix FromY;
+    public Fix ToX;
+    public Fix ToY;
+    public Fix PivotX;
+    public Fix PivotY;
+    public Fix StartSpeed;
+}

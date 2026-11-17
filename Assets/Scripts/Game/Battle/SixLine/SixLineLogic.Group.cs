@@ -12,30 +12,65 @@
 /// </summary>
 public partial class SixLineLogic
 {
-    /// <summary>旋转 60°：目标足迹须全空，否则拒绝（不做踢墙）</summary>
+    private static readonly Fix Third = Fix.One / Fix.FromInt(3);
+
     private bool TryRotate(Player p, int step)
     {
         var tri = p.Tri;
-        var nr = (tri.Rotation + step) % 6;
-        var s = SlotFor(nr, tri.X); // 按目标姿态取槽位，渲染位不变（绕中心旋转）
-
-        var y = tri.Y.Int;
-
-        var ok = SlotUsable(p.Board, y + 1, s);                  // 奇行左格（▲ 顶点 / ▽ 左上，都占）
-        if (ok && (nr & 1) == 0)
-            ok = SlotUsable(p.Board, y, s) && SlotUsable(p.Board, y, s + 1)
-                && SlotUsable(p.Board, y + 1, SingleCol(y + 1, s));
-        else if (ok)
-            ok = SlotUsable(p.Board, y + 1, s + 1) && SlotUsable(p.Board, y, SingleCol(y, s));
-
-        if (!ok)
+        var next = (tri.Rotation + step) % 6;
+        // 翻转 ▲/▽ 时保持重心不动，否则视觉上每次旋转都会上下跳动。
+        var nextY = tri.Y + ((tri.Rotation & 1) == 0 ? -Third : Third);
+        if (!BallsFit(p.Board, next, tri.X, nextY))
         {
             LastReject = RejectReason.RotationBlocked;
             return false;
         }
-
-        tri.Rotation = nr;
+        tri.Rotation = next;
+        tri.RotationTurns += step == 1 ? 1 : -1;
+        tri.Y = nextY;
         return true;
+    }
+
+    private bool BallsFit(Board board, int rotation, Fix x, Fix y)
+    {
+        if (x < Fix.Zero || x > Fix.FromInt(Columns - 2) || y < Fix.Zero)
+            return false;
+        for (int ball = 0; ball < 3; ball++)
+        {
+            BallPosition(rotation, x, y, ball, out var bx, out var by);
+            for (int i = 0; i < TotalCells; i++)
+            {
+                if (board.Cells[i] == EmptyColor)
+                    continue;
+                var dx = bx - CellCenterX(_rowOf[i], _colOf[i]);
+                var dy = by - CellY(_rowOf[i]);
+                if (dx * dx + dy * dy < BallTouchSq - Fix.FromRaw(4))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private Fix ContactY(Player p, int rotation, Fix x, Fix fromY)
+    {
+        var stop = Fix.Zero;
+        for (int ball = 0; ball < 3; ball++)
+        {
+            BallOffset(rotation, ball, out var ox, out var oy);
+            for (int i = 0; i < TotalCells; i++)
+            {
+                if (p.Board.Cells[i] == EmptyColor)
+                    continue;
+                var dx = x + ox - CellCenterX(_rowOf[i], _colOf[i]);
+                var dxSq = dx * dx;
+                if (dxSq >= BallTouchSq)
+                    continue;
+                var contact = Fix.FromInt(_rowOf[i]) + Half - oy + Fix.Sqrt(BallTouchSq - dxSq) / RowPitch;
+                if (contact <= fromY + Fix.FromRaw(8) && contact > stop)
+                    stop = contact;
+            }
+        }
+        return stop;
     }
 
     /// <summary>
@@ -56,7 +91,7 @@ public partial class SixLineLogic
                     continue;
 
                 var cr = _rowOf[i];
-                var dy = by - (Fix.FromInt(cr) + Half);
+                var dy = (by - (Fix.FromInt(cr) + Half)) * RowPitch;
                 var dy2 = dy * dy;
                 if (dy2 >= BallTouchSq)
                     continue; // 纵向不重叠，不构成横移约束
@@ -103,10 +138,8 @@ public partial class SixLineLogic
             var wish = tri.X + (dir > 0 ? MoveSpeed : -MoveSpeed);
             var newX = ClampXByBalls(p, tri.Rotation, tri.X, wish, tri.Y, dir);
 
-            // 墙只限横移范围，不改下落状态、不触发吸附。▽ 槽位取 floor，右端要少一格才能与 ▲ 视觉一致
+            // 墙只限横移范围；下落接触按圆形外沿计算。
             var maxX = Fix.FromInt(SlotCount - 1);
-            if ((tri.Rotation & 1) != 0)
-                maxX = maxX - Fix.FromRaw(1);
             if (newX < Fix.FromInt(0))
                 newX = Fix.FromInt(0);
             if (newX > maxX)
@@ -121,14 +154,16 @@ public partial class SixLineLogic
 
         if (tri.State == PieceState.Falling)
         {
-            tri.Y -= p.FastDropHeld ? FastFallSpeed : SlowFallSpeed;
-            var stop = DeepestStop(p.Board, tri.Rotation, tri.Slot, tri.Y.Int);
-            if (tri.Y <= Fix.FromInt(stop))
+            var stop = ContactY(p, tri.Rotation, tri.X, tri.Y);
+            var nextY = tri.Y - (p.FastDropHeld ? FastFallSpeed : SlowFallSpeed);
+            if (nextY <= stop)
             {
-                tri.Y = Fix.FromInt(stop);
+                tri.Y = stop;
                 tri.State = PieceState.Resting;
                 p.RestEndFrame = absFrame + GraceFrames;
             }
+            else
+                tri.Y = nextY;
             return;
         }
 
@@ -142,40 +177,78 @@ public partial class SixLineLogic
         var tri = p.Tri;
         if (tri.State != PieceState.Resting)
             return;
-        if (DeepestStop(p.Board, tri.Rotation, tri.Slot, tri.Y.Int) < tri.Y.Int)
+        if (ContactY(p, tri.Rotation, tri.X, tri.Y) < tri.Y - Fix.FromRaw(8))
             tri.State = PieceState.Falling;
     }
 
-    /// <summary>一次性结算：入板（行 >= Rows 不写）-> 沉降 -> 消除连锁 -> 下一组出生</summary>
-    private void Collapse(Player p)
+    private bool FindLockPlacement(Player p, out int row, out int slot)
     {
         var tri = p.Tri;
-        var r = tri.Rotation;
-        var s = tri.Slot;
-        var k = tri.Y.Int;
-        if ((r & 1) == 0) // ▲：偶行对 + 顶点
+        row = Rows;
+        slot = tri.Slot;
+        var best = Fix.FromInt(100000);
+        var found = false;
+        for (int r = 0; r <= Rows; r++)
         {
-            Place(p, k, s, tri.Colors[EvenLeftColor[r]]);
-            Place(p, k, s + 1, tri.Colors[EvenRightColor[r]]);
-            Place(p, k + 1, SingleCol(k + 1, s), tri.Colors[OddLeftColor[r]]);
+            var dy = Fix.FromInt(r) - tri.Y;
+            if (dy < -Fix.One || dy > Fix.One)
+                continue;
+            for (int c = 0; c < SlotCount; c++)
+            {
+                if (!PlacementInRow(tri.Rotation, c, r) || !PlacementEmpty(p.Board, tri.Rotation, c, r))
+                    continue;
+                var anchor = Fix.FromInt(c) + (((r & 1) == (tri.Rotation & 1)) ? Fix.Zero : Half);
+                var dx = anchor - tri.X;
+                if (dx < -Half || dx > Half)
+                    continue;
+                var cost = dx * dx + dy * dy * RowPitch * RowPitch;
+                if (cost >= best)
+                    continue;
+                best = cost;
+                row = r;
+                slot = c;
+                found = true;
+            }
         }
-        else // ▽：奇行对 + 顶点
-        {
-            Place(p, k + 1, s, tri.Colors[OddLeftColor[r]]);
-            Place(p, k + 1, s + 1, tri.Colors[OddRightColor[r]]);
-            Place(p, k, SingleCol(k, s), tri.Colors[EvenRightColor[r]]);
-        }
+        return found;
+    }
 
+    private void Collapse(Player p)
+    {
+        BeginPresentation(p);
+        var tri = p.Tri;
+        var rotation = tri.Rotation;
+        if (!FindLockPlacement(p, out var row, out var slot))
+            p.Overflow = true;
+        else
+        {
+            for (int ball = 0; ball < 3; ball++)
+            {
+                var colorSlot = BallColorSlot(rotation, ball);
+                var r = ball == 2 ? ((rotation & 1) == 0 ? row + 1 : row) : ((rotation & 1) == 0 ? row : row + 1);
+                var c = ball == 2 ? SingleCol(r, slot) : slot + ball;
+                BallPosition(rotation, tri.X, tri.Y, ball, out var fromX, out var fromY);
+                Place(p, r, c, tri.Colors[colorSlot], tri.PieceIds[colorSlot], fromX, fromY);
+            }
+        }
+        p.VisualEndFrame = System.Math.Max(p.VisualEndFrame, SnapFrames);
         tri.State = PieceState.None;
         SettlePass(p);
         SettleChains(p);
-        DrawNext(p);
+        p.LockedThisFrame = true;
     }
 
-    private static void Place(Player p, int row, int col, int color)
+    private void Place(Player p, int row, int col, int color, int pieceId, Fix fromX, Fix fromY)
     {
-        if (row < Rows && color >= 0)
-            p.Board.Set(row, col, color);
+        if (row < 0 || row >= Rows || col < 0 || col >= RowCells(row) || p.Board.Get(row, col) != EmptyColor)
+        {
+            p.Overflow = true;
+            return;
+        }
+        var index = RowStart(row) + col;
+        p.Board.Cells[index] = color;
+        p.Board.PieceIds[index] = pieceId;
+        RecordVisual(p, SlVisualKind.Place, pieceId, color, fromX, fromY, CellCenterX(row, col), CellY(row), 0, SnapFrames);
     }
 
     // ---- 出子序列 ----
@@ -183,20 +256,21 @@ public partial class SixLineLogic
     private void DrawNext(Player p)
     {
         var tri = p.Tri;
-        EnsureSeq(p.SeqPos + 3);
-        tri.Colors[0] = SharedSeq[p.SeqPos];
-        tri.Colors[1] = SharedSeq[p.SeqPos + 1];
-        tri.Colors[2] = SharedSeq[p.SeqPos + 2];
+        for (int i = 0; i < 3; i++)
+        {
+            tri.Colors[i] = p.PreviewColors[i];
+            tri.PieceIds[i] = p.NextPieceId++;
+        }
+        for (int i = 0; i < p.PreviewColors.Length - 3; i++)
+            p.PreviewColors[i] = p.PreviewColors[i + 3];
+        for (int i = p.PreviewColors.Length - 3; i < p.PreviewColors.Length; i++)
+            p.PreviewColors[i] = p.PieceRng.NextInt(ColorMin, ColorMax + 1);
         p.SeqPos += 3;
         tri.Rotation = 0;
+        tri.RotationTurns = 0;
         tri.X = Fix.FromInt(SlotCount / 2); // 默认中间列出生
         tri.Y = Fix.FromInt(Rows);         // 从棋盘顶之上起落
         tri.State = PieceState.Falling;
     }
 
-    private void EnsureSeq(int need)
-    {
-        while (SharedSeq.Count < need)
-            SharedSeq.Add(_rng.NextInt(ColorMin, ColorMax + 1));
-    }
 }

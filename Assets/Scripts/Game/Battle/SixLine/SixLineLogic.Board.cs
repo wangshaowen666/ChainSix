@@ -14,18 +14,19 @@ public partial class SixLineLogic
 {
     private static readonly Fix Half = Fix.FromDouble(0.5);
     private static readonly Fix One5 = Half + Fix.One;
+    // 正三角蜂窝的相邻行距为圆直径的 sqrt(3)/2，碰撞与渲染共用。
+    public static readonly Fix RowPitch = Fix.FromDouble(0.8660254037844386);
 
     // ---- 蜂窝错行几何（偶行 10 格中心 x=col+0.5，奇行 9 格中心 x=col+1）----
 
     public static bool RowIsWide(int row) => (row & 1) == 0;
-    public static int RowCells(int row) => RowIsWide(row) ? 10 : 9;
+    public int RowCells(int row) => RowIsWide(row) ? Columns : Columns - 1;
 
-    /// <summary>行首扁平下标（每两行 19 格）</summary>
-    public static int RowStart(int row) => (row >> 1) * 19 + (RowIsWide(row) ? 0 : 10);
-    public const int TotalCells = 114;
+    /// <summary>行首扁平下标（每两行宽行与窄行之和）</summary>
+    public int RowStart(int row) => (row >> 1) * (Columns * 2 - 1) + (RowIsWide(row) ? 0 : Columns);
 
     /// <summary>六邻接扁平下标，-1 = 越界。dir：0=右 1=左 2=右上 3=左上 4=右下 5=左下</summary>
-    public static int Neighbor(int row, int col, int dir)
+    public int Neighbor(int row, int col, int dir)
     {
         switch (dir)
         {
@@ -88,12 +89,14 @@ public partial class SixLineLogic
 
     /// <summary>
     /// 下落三角组。Colors = 原始 ▲ 槽位色 [A=顶, B=左下, C=右下]；Rotation 偶=▲ 奇=▽；
-    /// X = 连续列位锚点，Y = 偶行（下排）行坐标。
+    /// X = 连续列位锚点，Y = 下排连续行坐标，旋转时补偿重心高度。
     /// </summary>
     public class Triomino
     {
         public readonly int[] Colors = new int[3];
+        public readonly int[] PieceIds = new int[3];
         public int Rotation;
+        public int RotationTurns;
         public Fix X;
         public Fix Y;
         public PieceState State;
@@ -106,16 +109,27 @@ public partial class SixLineLogic
 
     public class Board
     {
-        public readonly int[] Cells = new int[TotalCells];
-        public int Get(int row, int col) => Cells[RowStart(row) + col];
-        public void Set(int row, int col, int color) => Cells[RowStart(row) + col] = color;
+        public readonly int[] Cells;
+        public readonly int[] PieceIds;
+        private readonly int _columns;
+
+        public Board(int totalCells, int columns)
+        {
+            Cells = new int[totalCells];
+            PieceIds = new int[totalCells];
+            _columns = columns;
+        }
+
+        private int Start(int row) => (row >> 1) * (_columns * 2 - 1) + ((row & 1) == 0 ? 0 : _columns);
+        public int Get(int row, int col) => Cells[Start(row) + col];
+        public void Set(int row, int col, int color) => Cells[Start(row) + col] = color;
     }
 
     public class Player
     {
         public int PlayerIndex;
-        public readonly Board Board = new Board();
-        public int SeqPos; // 出子游标（SharedSeq 下标）
+        public readonly Board Board;
+        public int SeqPos; // 已消费的共享序列色子数
         public readonly Triomino Tri = new Triomino();
         public bool MoveLeftHeld;  // 帧内瞬时标志，步进后复位
         public bool MoveRightHeld;
@@ -130,6 +144,32 @@ public partial class SixLineLogic
         public int RoundCount;
 
         public int RestEndFrame; // 容错截止帧
+        public readonly int[] PreviewColors = new int[PreviewCount * 3];
+        public readonly XRng PieceRng;
+        public readonly int[] RoundPatterns = new int[MaxSettleRounds];
+        public bool LockedThisFrame;
+        public bool Overflow;
+        public bool Lost;
+        public int PendingGarbage;
+        public int SentThisFrame;
+        public int ReceivedThisFrame;
+        public long TotalSent;
+        public long TotalReceived;
+        public int NextPieceId = 1;
+        public int ResolveUntilFrame;
+        public int PresentationFrame = -1;
+        public int VisualEventCount;
+        public int VisualEndFrame;
+        public readonly SlVisualEvent[] VisualEvents;
+        public readonly int[] CellReady;
+
+        public Player(int totalCells, int columns, ulong seed)
+        {
+            Board = new Board(totalCells, columns);
+            PieceRng = new XRng(seed);
+            VisualEvents = new SlVisualEvent[(totalCells + 3) * ((totalCells / columns) + 5) * 4];
+            CellReady = new int[totalCells];
+        }
     }
 
     /// <summary>
@@ -154,22 +194,17 @@ public partial class SixLineLogic
 
     // ---- 占位判定（行 >= Rows 一律视为棋盘顶之上：在行内且为空）----
 
-    private static bool SlotUsable(Board b, int row, int col)
+    private bool CellInRow(int row, int col)
     {
-        return CellInRow(row, col) && CellEmpty(b, row, col);
+        return row >= 0 && col >= 0 && col < RowCells(row);
     }
 
-    private static bool CellInRow(int row, int col)
-    {
-        return row >= Rows || (col >= 0 && col < RowCells(row));
-    }
-
-    private static bool CellEmpty(Board b, int row, int col)
+    private bool CellEmpty(Board b, int row, int col)
     {
         return row >= Rows || b.Get(row, col) == EmptyColor;
     }
 
-    private static bool PlacementInRow(int rotation, int slot, int k)
+    private bool PlacementInRow(int rotation, int slot, int k)
     {
         if (k < 0)
             return false;
@@ -178,31 +213,11 @@ public partial class SixLineLogic
         return CellInRow(k + 1, slot) && CellInRow(k + 1, slot + 1) && CellInRow(k, SingleCol(k, slot));
     }
 
-    private static bool PlacementEmpty(Board b, int rotation, int slot, int k)
+    private bool PlacementEmpty(Board b, int rotation, int slot, int k)
     {
         if ((rotation & 1) == 0)
             return CellEmpty(b, k, slot) && CellEmpty(b, k, slot + 1) && CellEmpty(b, k + 1, SingleCol(k + 1, slot));
         return CellEmpty(b, k + 1, slot) && CellEmpty(b, k + 1, slot + 1) && CellEmpty(b, k, SingleCol(k, slot));
     }
 
-    /// <summary>
-    /// 最深可停基准行：被占行阻挡，几何非法的相位行（列越界）直接路过。
-    /// slot 8 下 ▲ 只有偶行、▽ 只有奇行是合法落点，不能按单行是否空闲直推。
-    /// </summary>
-    private static int DeepestStop(Board b, int rotation, int slot, int fromK)
-    {
-        var k = fromK < 0 ? 0 : fromK;
-        while (k < Rows && PlacementInRow(rotation, slot, k) && !PlacementEmpty(b, rotation, slot, k))
-            k++;
-        while (k > 0)
-        {
-            var nk = k - 1;
-            if (PlacementInRow(rotation, slot, nk) && !PlacementEmpty(b, rotation, slot, nk))
-                break;
-            k = nk;
-        }
-        while (k < Rows && !PlacementInRow(rotation, slot, k))
-            k++;
-        return k;
-    }
 }

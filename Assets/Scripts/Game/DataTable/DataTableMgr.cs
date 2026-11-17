@@ -25,6 +25,7 @@ public class DataTableMgr : ManagerBase
     
     // 导表工具自动补全下列属性
     private cfg.Tables _tables;
+    public TbSixLineRule TbSixLineRule => _tables.TbSixLineRule;
     public TbEntity TbEntity => _tables.TbEntity;
     public TbUIPanel TbUIPanel => _tables.TbUIPanel;
 

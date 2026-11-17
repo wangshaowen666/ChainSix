@@ -12,14 +12,14 @@ using UnityEngine;
 
 /// <summary>
 /// 六连珠单机驱动器：注册 CoreMgr.Update，按墙钟累积每满 LogicFrameMs 推一逻辑帧。
-/// 渲染帧轮询输入源累积到 pending，逻辑帧边界整体喂给 Tick。
+/// 渲染帧缓存点按，逻辑帧采样长按；追帧保持长按，点按不重复。
 /// 阶段 3 好友对战换成 FrameSyncMgr，Logic 与表现层零改动。
 /// </summary>
 public class SlLocalDriver : IUpdateable
 {
     private readonly SixLineLogic _logic;
     private readonly List<ISlInputSource> _sources = new List<ISlInputSource>();
-    private readonly List<SlInput> _pending = new List<SlInput>(); // 边缘事件不因逻辑帧边界丢失
+    private readonly List<SlInput> _pending = new List<SlInput>(32); // 边缘事件不因逻辑帧边界丢失
     private double _lastRealTime = -1;
     private float _frameTimer;
     private int _nextFrameId = 1;
@@ -46,18 +46,25 @@ public class SlLocalDriver : IUpdateable
 
     public void MyUpdate(float deltaTime, float realDeltaTime)
     {
-        if (Paused)
+        if (!Application.isFocused)
+        {
+            ResetInput();
+            _lastRealTime = -1;
+            _frameTimer = 0;
+            return;
+        }
+        if (Paused || _logic.GameOver)
         {
             // 暂停：停步进不累积预算，alpha 冻结
-            OnRenderFrame?.Invoke(Mathf.Clamp01(_frameTimer / SixLineLogic.LogicFrameMs), 0f);
+            OnRenderFrame?.Invoke(Mathf.Clamp01(_frameTimer / SixLineLogic.LogicFrameMs), _logic.GameOver ? realDeltaTime : 0f);
             return;
         }
 
         for (int i = 0; i < _sources.Count; i++)
             _sources[i].Collect(_pending);
 
-        // 用真实流逝时间累积（编辑器失焦/长卡顿也能步进）
-        var now = Time.realtimeSinceStartup;
+        // 前台长卡顿按真实时间追帧；失焦已在上面丢弃预算。
+        var now = Time.realtimeSinceStartupAsDouble;
         if (_lastRealTime < 0) _lastRealTime = now;
         _frameTimer += (float)((now - _lastRealTime) * 1000.0);
         var deltaSeconds = (float)(now - _lastRealTime);
@@ -66,10 +73,18 @@ public class SlLocalDriver : IUpdateable
         while (_frameTimer >= SixLineLogic.LogicFrameMs)
         {
             _frameTimer -= SixLineLogic.LogicFrameMs;
+            for (int i = 0; i < _sources.Count; i++)
+                _sources[i].CollectHeld(_pending);
             CurFrameId = _nextFrameId++;
             _logic.Tick(CurFrameId, _pending);
-            _pending.Clear(); // 追帧时后续帧为空帧
+            _pending.Clear(); // 点按只消费一次；长按在每个逻辑帧重新采样。
             OnFrame?.Invoke(CurFrameId);
+            if (_logic.GameOver)
+            {
+                _frameTimer = 0;
+                ResetInput();
+                break;
+            }
         }
 
         OnRenderFrame?.Invoke(Mathf.Clamp01(_frameTimer / SixLineLogic.LogicFrameMs), deltaSeconds);
@@ -78,6 +93,7 @@ public class SlLocalDriver : IUpdateable
     public void Pause()
     {
         Paused = true;
+        ResetInput();
     }
 
     public void Resume()
@@ -89,6 +105,17 @@ public class SlLocalDriver : IUpdateable
     public void Dispose()
     {
         CoreMgr.Update.UnRegisterUpdate(this);
+        ResetInput();
+        _sources.Clear();
+        OnFrame = null;
+        OnRenderFrame = null;
+    }
+
+    private void ResetInput()
+    {
+        _pending.Clear();
+        for (int i = 0; i < _sources.Count; i++)
+            _sources[i].Reset();
     }
 }
 
@@ -99,4 +126,6 @@ public class SlLocalDriver : IUpdateable
 public interface ISlInputSource
 {
     void Collect(List<SlInput> pending);
+    void CollectHeld(List<SlInput> pending);
+    void Reset();
 }

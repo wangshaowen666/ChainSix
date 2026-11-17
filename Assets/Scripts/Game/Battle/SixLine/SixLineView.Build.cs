@@ -12,7 +12,7 @@ using UnityEngine;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// 六连珠表现层 · 灰盒图元构建（partial）。当前用 Sprites/Default，真机材质随 1-6 重建。
+/// 六连珠表现层 · 灰盒图元构建（partial），材质由 ViewMats 共用。
 /// </summary>
 public partial class SixLineView
 {
@@ -26,41 +26,47 @@ public partial class SixLineView
         new(0.70f, 0.40f, 0.90f, 1f),
     };
 
+    public static Color PieceColor(int color) => s_palette[color - 1];
+
     private static Mesh _circleMesh; // 圆盘网格（半径 0.5，全局共享）
 
-    private BoardView BuildBoard(string name, Vector2 origin, float cell)
+    private BoardView BuildBoard(string name, Vector2 origin, float cell, int playerIndex)
     {
         var bv = new BoardView
         {
             Root = new GameObject(name).transform,
             Cell = cell,
-            CellAnims = new CircleAnim[SixLineLogic.TotalCells],
-            Prev = new int[SixLineLogic.TotalCells],
+            PlayerIndex = playerIndex,
+            Events = new SlVisualEvent[_logic.Players[playerIndex].VisualEvents.Length],
+            Started = new bool[_logic.Players[playerIndex].VisualEvents.Length],
+            Done = new bool[_logic.Players[playerIndex].VisualEvents.Length],
+            EventFrom = new Vector3[_logic.Players[playerIndex].VisualEvents.Length],
+            FinalIds = new int[_logic.TotalCells],
+            FinalColors = new int[_logic.TotalCells],
             TriAnims = new CircleAnim[3],
-            Free = new List<CircleAnim>(SixLineLogic.TotalCells + 3),
+            Free = new List<CircleAnim>(_logic.TotalCells + 3),
         };
         bv.Root.SetParent(_root, false);
         bv.Root.position = origin;
 
-        var w = BoardWidth * cell;
-        var h = SixLineLogic.Rows * cell;
+        var w = _logic.Columns * cell;
+        var h = BoardHeightCells * cell;
 
         // z 越大越靠后：底板 -> 危险区罩 -> 棋子
         MakeQuad(bv.Root, "Bg", w, h, new Color(0.13f, 0.14f, 0.17f, 1f))
             .localPosition = new Vector3(w * 0.5f, h * 0.5f, 0.5f);
 
-        var dh = SixLineLogic.DangerRows * cell;
+        var dh = h - GridY(_logic.Rows - _logic.DangerRows) * cell;
         MakeQuad(bv.Root, "Danger", w, dh, new Color(0.9f, 0.2f, 0.2f, 0.15f))
             .localPosition = new Vector3(w * 0.5f, h - dh * 0.5f, 0.3f);
 
         // 视觉圈池：TotalCells 格 + 3 颗下落组，先全部隐藏入池
-        for (int i = 0; i < SixLineLogic.TotalCells + 3; i++)
+        for (int i = 0; i < _logic.TotalCells + 3; i++)
         {
             var a = new CircleAnim
             {
                 Tr = MakeCircle(bv.Root, $"C_{i}", cell * 0.96f, Color.white),
                 Color = 0,
-                LastCell = -1,
             };
             a.Mr = a.Tr.GetComponent<MeshRenderer>();
             a.Tr.gameObject.SetActive(false);
@@ -69,21 +75,18 @@ public partial class SixLineView
         return bv;
     }
 
-    /// <summary>格中心局部坐标（偶行 x=col+0.5，奇行 x=col+1）</summary>
-    private static Vector3 CellLocal(int row, int col, float cell, float z)
-    {
-        var x = col + 0.5f + (SixLineLogic.RowIsWide(row) ? 0f : 0.5f);
-        return new Vector3(x * cell, (row + 0.5f) * cell, z);
-    }
-
     private static Transform MakeQuad(Transform parent, string name, float w, float h, Color color)
     {
         var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
         go.name = name;
-        Object.Destroy(go.GetComponent<Collider>()); // 纯表现，去掉图元自带碰撞体
+        var collider = go.GetComponent<Collider>();
+        if (Application.isPlaying)
+            Object.Destroy(collider);
+        else
+            Object.DestroyImmediate(collider);
 
         var mr = go.GetComponent<MeshRenderer>();
-        mr.material = new Material(Shader.Find("Sprites/Default")) { color = color };
+        mr.sharedMaterial = ViewMats.GetMat(color);
 
         var tr = go.transform;
         tr.SetParent(parent, false);
@@ -96,7 +99,7 @@ public partial class SixLineView
         var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
         go.GetComponent<MeshFilter>().sharedMesh = CircleMesh();
         var mr = go.GetComponent<MeshRenderer>();
-        mr.material = new Material(Shader.Find("Sprites/Default")) { color = color };
+        mr.sharedMaterial = ViewMats.GetMat(color);
 
         var tr = go.transform;
         tr.SetParent(parent, false);
